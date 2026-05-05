@@ -20,6 +20,21 @@ export {
 export type { AmnesiaProviderProps } from "./Amnesia/provider";
 export { DEFAULT_SCOPE_ID } from "./Amnesia/provider-api";
 export type { AmnesiaProviderApi, ScopeOptions } from "./Amnesia/provider-api";
+export {
+    DEVTOOLS_GLOBAL_KEY,
+    generateDevToolsId,
+    getDevToolsRegistry,
+    registerDevToolsProvider,
+} from "./Amnesia/devtools";
+export type {
+    AmnesiaDevToolsCapabilities,
+    AmnesiaDevToolsMeta,
+    AmnesiaDevToolsProviderApi,
+    AmnesiaDevToolsProviderDescriptor,
+    AmnesiaDevToolsProviderEntry,
+    AmnesiaDevToolsRegistry,
+    AmnesiaDevToolsWeakRef,
+} from "./Amnesia/devtools";
 export { useAmnesia } from "./Amnesia/use";
 export type { UseAmnesiaResult } from "./Amnesia/use";
 export { useUndoableState } from "./Amnesia/use-undoable-state";

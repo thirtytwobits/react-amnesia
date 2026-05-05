@@ -39,6 +39,20 @@ would change user behavior after a Ctrl+Z.
 | Reading the stack for UI (history list, breadcrumb, badges)    | `useAmnesia()` snapshot            | Already memo-stable; no need to subscribe manually                   |
 | Direct programmatic undo / redo (toolbar buttons, menu items)  | `useAmnesia().undo()` / `.redo()`  | Resolves to the affected entry id, or `null` when the stack was empty |
 
+## DevTools Registry vs Lifecycle Hooks vs Subscribers
+
+| Need                                                                            | Approach                                          |
+| ------------------------------------------------------------------------------- | ------------------------------------------------- |
+| External tool / browser extension reads live state                              | `<AmnesiaProvider enableDevTools devToolsId="…">` |
+| AI agent introspects history without touching app code                          | DevTools registry — `resolve(id)` then call api   |
+| Drive `undo` / `redo` from a debugging UI                                       | DevTools `triggerUndo` / `triggerRedo`            |
+| Telemetry on every push / undo / redo / clear                                   | Provider hooks (`onPush`, `onUndo`, `onRedo`, `onClear`) |
+| React component renders state                                                   | `useAmnesia()` snapshot — subscribers, not hooks  |
+| Per-scope analytics                                                             | Per-scope hook in `scopes={{ canvas: { onPush } }}` |
+| Forward errors                                                                  | `onError`                                         |
+| Redact secrets / PII before they leave the store                                | `metaTransform`                                   |
+| Need synchronous side effect at mutation time                                   | NOT a hook — wrap the mutation; hooks are post-notify |
+
 ## Lifecycle Hooks vs Subscribers
 
 | Need                                                                            | Approach                                                |

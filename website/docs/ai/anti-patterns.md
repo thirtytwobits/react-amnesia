@@ -192,6 +192,29 @@ Prefer:
   the inverse as a normal `set(initial)` — but then the operation is
   itself undoable, and the user can roll back the reset
 
+## Leaving DevTools Enabled In Production
+
+`enableDevTools` exposes the provider's full inspection api on
+`window.__REACT_AMNESIA_DEVTOOLS__`, including triggers that mutate state
+and a `dump()` that returns every scope's `meta`. Production users do not
+need this surface, and it can leak data that `metaTransform` is supposed
+to redact in development if your `metaTransform` is dev-only.
+
+Wrong:
+
+- `<AmnesiaProvider enableDevTools>` shipped to production unconditionally
+- conditioning on `process.env.NODE_ENV` inside the component (still
+  bundled in production output if your bundler doesn't dead-code-eliminate)
+
+Prefer:
+
+- gate via a build-time env flag the bundler can statically eliminate:
+  `enableDevTools={import.meta.env.DEV}` (Vite),
+  `enableDevTools={process.env.NODE_ENV !== "production"}` (with bundler
+  define), or a custom feature flag wired to a known constant
+- ensure your `metaTransform` runs in production too, so even an
+  accidentally-enabled devtools surface gets redacted state
+
 ## Driving UI From Lifecycle Hooks
 
 Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are for

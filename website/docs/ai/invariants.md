@@ -42,6 +42,21 @@ guarantees.
 - The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
 - Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
 
+## DevTools Registry
+
+- `<AmnesiaProvider enableDevTools>` lazily installs `window.__REACT_AMNESIA_DEVTOOLS__` on first mount and registers the provider's inspection api under `devToolsId` (auto-generated `amnesia-N` if omitted).
+- When no provider sets `enableDevTools`, the registry is never created — no global, no overhead.
+- Registry shape:
+    - `providers: Record<id, AmnesiaDevToolsProviderEntry>`
+    - `resolve(id) -> AmnesiaDevToolsProviderApi | null` (returns `null` for GC'd or unregistered providers)
+    - `list() -> AmnesiaDevToolsProviderDescriptor[]` (id, available, registeredAt)
+    - `capabilities -> { weakRef, finalizationRegistry }`
+    - `__meta -> { version, lastUpdated, lastChange }` (bumps on every register / unregister)
+- Provider entries are stored as `WeakRef`s when available; `deref()` returns the live api or `undefined`. A strong-reference fallback keeps the registry usable on runtimes without `WeakRef`.
+- The provider's inspection api exposes `id`, `getActiveScopeId()`, `scopes()`, `getSnapshot(scopeId?)`, `pastSnapshot(scopeId?)`, `futureSnapshot(scopeId?)`, `dump()`, `triggerUndo(scopeId?)`, `triggerRedo(scopeId?)`, `clear(scopeId?)`. Methods that take an optional `scopeId` resolve to the active scope when omitted.
+- Triggers (`triggerUndo`, `triggerRedo`) are async and obey the same single-flight / busy / stale rules as direct store calls.
+- The provider's `useEffect` re-registers under the same id across StrictMode's simulated cleanup-then-setup cycle. External listeners may observe a brief gap; `__meta.version` records each transition.
+
 ## Reset Semantics
 
 - `useUndoableState` returns `[value, set, reset]`. The reset reference is stable across renders.

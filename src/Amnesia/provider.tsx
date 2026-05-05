@@ -16,13 +16,14 @@
  * - `useAmnesiaScopes()` for provider-level orchestration
  */
 
-import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type JSX, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import {
     createAmnesiaProviderApi,
     DEFAULT_SCOPE_ID,
     type AmnesiaProviderApi,
     type ScopeOptions,
 } from "./provider-api";
+import { generateDevToolsId, registerDevToolsProvider, type AmnesiaDevToolsProviderApi } from "./devtools";
 import type { Amnesia, AmnesiaProviderOptions } from "./types";
 
 const AmnesiaContext = createContext<AmnesiaProviderApi | null>(null);
@@ -60,6 +61,24 @@ export interface AmnesiaProviderProps extends Readonly<AmnesiaProviderOptions> {
      * ```
      */
     scopes?: Record<string, ScopeOptions>;
+
+    /**
+     * Register the provider with the global devtools registry under
+     * `window.__REACT_AMNESIA_DEVTOOLS__`. Off by default; opt in for
+     * debugging, browser-extension integration, or AI-agent introspection.
+     *
+     * The registry is **lazy-installed**: when no provider sets
+     * `enableDevTools={true}` anywhere in the tree, no global is created.
+     */
+    enableDevTools?: boolean;
+
+    /**
+     * Stable id under which to register with the devtools registry. When
+     * omitted, an auto-generated `amnesia-N` id is assigned on first mount
+     * and reused across re-renders. Pin a known id if you want external
+     * tooling to find the provider by name.
+     */
+    devToolsId?: string;
 }
 
 /**
@@ -70,7 +89,8 @@ export interface AmnesiaProviderProps extends Readonly<AmnesiaProviderOptions> {
  * created has no effect. Remount the provider with a `key` to reset.
  */
 export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
-    const { children, store: providedStore, capacity, coalesceWindowMs, onError, scopes } = props;
+    const { children, store: providedStore, capacity, coalesceWindowMs, onError, scopes, enableDevTools, devToolsId } =
+        props;
 
     // Lazy ref so the api is created exactly once per component instance,
     // including under React 18 StrictMode (which double-invokes effect
@@ -85,8 +105,38 @@ export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
             ...(scopes !== undefined ? { scopes } : {}),
         });
     }
+    const api = apiRef.current;
 
-    return <AmnesiaContext.Provider value={apiRef.current}>{children}</AmnesiaContext.Provider>;
+    // Generated devtools id sticks across re-renders. The user may pin a
+    // specific id via the prop; we honor that. Generated only when needed.
+    const generatedIdRef = useRef<string | null>(null);
+    const resolvedDevToolsId =
+        devToolsId ?? (generatedIdRef.current ?? (generatedIdRef.current = generateDevToolsId()));
+
+    useEffect(() => {
+        if (!enableDevTools) return undefined;
+        const devToolsApi: AmnesiaDevToolsProviderApi = {
+            id: resolvedDevToolsId,
+            getActiveScopeId: () => api.getActiveScopeId(),
+            scopes: () => api.getScopeIds(),
+            getSnapshot: (scopeId) => api.getScope(scopeId ?? api.getActiveScopeId()).getSnapshot(),
+            pastSnapshot: (scopeId) => api.getScope(scopeId ?? api.getActiveScopeId()).getSnapshot().past,
+            futureSnapshot: (scopeId) => api.getScope(scopeId ?? api.getActiveScopeId()).getSnapshot().future,
+            dump: () => {
+                const out: Record<string, ReturnType<Amnesia["getSnapshot"]>> = {};
+                for (const id of api.getScopeIds()) {
+                    out[id] = api.getScope(id).getSnapshot();
+                }
+                return out;
+            },
+            triggerUndo: (scopeId) => api.getScope(scopeId ?? api.getActiveScopeId()).undo(),
+            triggerRedo: (scopeId) => api.getScope(scopeId ?? api.getActiveScopeId()).redo(),
+            clear: (scopeId) => api.clear(scopeId),
+        };
+        return registerDevToolsProvider(devToolsApi);
+    }, [api, enableDevTools, resolvedDevToolsId]);
+
+    return <AmnesiaContext.Provider value={api}>{children}</AmnesiaContext.Provider>;
 }
 
 /**

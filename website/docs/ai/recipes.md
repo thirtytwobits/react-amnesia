@@ -579,7 +579,52 @@ in the same microtask. There is no entry to undo back to the pre-reset
 state — that is the point. If you want the discard to itself be undoable,
 push a normal command instead.
 
-## 16. Custom Error Reporting
+## 16. Wiring DevTools For Agent / Extension Introspection
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+
+export function App({ children }: { children: React.ReactNode }) {
+    return (
+        <AmnesiaProvider
+            enableDevTools={import.meta.env.DEV}
+            devToolsId="my-app"
+        >
+            <AmnesiaShortcuts />
+            {children}
+        </AmnesiaProvider>
+    );
+}
+```
+
+External code can then introspect or drive the store:
+
+```ts
+const registry = window.__REACT_AMNESIA_DEVTOOLS__;
+if (registry) {
+    const probe = registry.resolve("my-app");
+    if (probe) {
+        console.table(probe.dump());     // every scope's snapshot
+        await probe.triggerUndo();       // drive an undo
+        probe.clear("draft");            // wipe a scope
+    }
+}
+```
+
+Use when:
+
+- a browser extension or external CLI needs to observe state without
+  consuming React context
+- an AI agent should be able to query "what's on the stack" without reading
+  source
+- you want a debug surface that toggles on in development and is absent in
+  production builds (gate via your bundler's env flag)
+
+The registry is **opt-in**: when no provider sets `enableDevTools`, no
+global is created. When enabled, provider entries are held weakly so the
+registry never prevents an unmounted provider from being garbage-collected.
+
+## 17. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -603,7 +648,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 17. History Breadcrumb UI
+## 18. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
