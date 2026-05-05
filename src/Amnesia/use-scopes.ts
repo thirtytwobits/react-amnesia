@@ -7,7 +7,7 @@
  * - `useAmnesiaFocusClaim(scopeId)` — focus-capture handlers that mark a
  *   surface as the active scope while it owns focus.
  * - `useAmnesiaScopes()` — provider-level view of registered scopes plus a
- *   `clearAll()` helper.
+ *   `clear(scopeId?)` helper.
  */
 
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type FocusEventHandler, type PointerEventHandler } from "react";
@@ -94,8 +94,11 @@ export interface UseAmnesiaScopesResult {
      * default scope only after it has been instantiated (lazy creation).
      */
     scopeIds: readonly string[];
-    /** Clear past + future of every registered scope. */
-    clearAll: () => void;
+    /**
+     * Clear past + future. With no argument, every registered scope is
+     * cleared. With a `scopeId`, only that scope is cleared.
+     */
+    clear: (scopeId?: string) => void;
 }
 
 /**
@@ -106,10 +109,10 @@ export interface UseAmnesiaScopesResult {
 export function useAmnesiaScopes(): UseAmnesiaScopesResult {
     const api = useAmnesiaProviderApi();
     const activeScopeId = useSyncExternalStore(api.subscribeActive, api.getActiveScopeId, api.getActiveScopeId);
-    const clearAll = useCallback(() => api.clearAll(), [api]);
+    const clear = useCallback((scopeId?: string) => api.clear(scopeId), [api]);
     return {
         activeScopeId,
         scopeIds: api.getScopeIds(),
-        clearAll,
+        clear,
     };
 }

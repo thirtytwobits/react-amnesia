@@ -17,7 +17,7 @@
 
 import { useCallback, useRef } from "react";
 import { useMnemonicKey, type UseMnemonicKeyOptions } from "react-mnemonic";
-import { useAmnesiaStore } from "./Amnesia/provider";
+import { useAmnesiaScope } from "./Amnesia/provider";
 import { DEFAULT_SCOPE_ID } from "./Amnesia/provider-api";
 import type { UndoableSetter } from "./Amnesia/use-undoable-state";
 import type { UseUndoableStateOptions } from "./Amnesia/types";
@@ -71,7 +71,7 @@ export function usePersistedUndoableState<T>(
     const { label, coalesceKey, equals, scopeId, ...mnemonicOptions } = options;
     // Pin to an explicit scope (default = "default") to keep the persisted
     // value's history bound to a stable surface, just like `useUndoableState`.
-    const store = useAmnesiaStore(scopeId ?? DEFAULT_SCOPE_ID);
+    const store = useAmnesiaScope(scopeId ?? DEFAULT_SCOPE_ID);
     const mnemonic = useMnemonicKey<T>(key, mnemonicOptions);
 
     const valueRef = useRef(mnemonic.value);

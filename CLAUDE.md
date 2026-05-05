@@ -17,7 +17,7 @@ application history with `react-amnesia`.
 - `<AmnesiaShortcuts />` routes Ctrl+Z / Cmd+Z to the active scope by default. Pin with `<AmnesiaShortcuts scopeId="canvas" />` to ignore claim changes.
 - `<AmnesiaShortcuts />` calls `event.preventDefault()` whenever the chord matches outside an editable target — even when there is nothing to undo. This is required because async `undo` / `redo` cannot synchronously decide whether the browser's native handler should run.
 - Per-scope option overrides go on the provider: `<AmnesiaProvider scopes={{ canvas: { capacity: 1000 } }}>`. Settings are read at scope-creation time (lazy).
-- `useAmnesiaScopes()` returns `{ activeScopeId, scopeIds, clearAll }` for provider-level UI (breadcrumbs, document-switch reset).
+- `useAmnesiaScopes()` returns `{ activeScopeId, scopeIds, clear(scopeId?) }` for provider-level UI (breadcrumbs, document-switch reset). `clear()` with no arg clears every scope; `clear("canvas")` clears one.
 - The undo stack is **in-memory only**. Closures are not serialized and the history does not survive a reload.
 - To survive reloads, persist the underlying value (e.g. via `react-mnemonic`) and let the history start fresh per session.
 - `Command.redo` and `Command.undo` may be synchronous or return `Promise<void>`. `push` / `undo` / `redo` always return `Promise<number | null>`.

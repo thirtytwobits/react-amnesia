@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { useAmnesiaStore } from "./provider";
+import { useAmnesiaScope } from "./provider";
 import { DEFAULT_SCOPE_ID } from "./provider-api";
 import type { UseUndoableStateOptions } from "./types";
 
@@ -42,7 +42,7 @@ export function useUndoableState<T>(
     // the active scope. React state lives in this component instance, so
     // the history surface it belongs to is a stable property — not driven
     // by keyboard focus.
-    const store = useAmnesiaStore(options.scopeId ?? DEFAULT_SCOPE_ID);
+    const store = useAmnesiaScope(options.scopeId ?? DEFAULT_SCOPE_ID);
     const [value, setValue] = useState<T>(initial);
 
     // Refs let the setter stay stable while still seeing the latest value

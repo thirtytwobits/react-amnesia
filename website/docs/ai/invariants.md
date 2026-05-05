@@ -47,7 +47,7 @@ guarantees.
 - `useAmnesia(scopeId?)` does the opposite: with no arg it tracks the active claim; with an arg it pins.
 - `<AmnesiaShortcuts />` resolves the target scope at handler time so live focus claims always route the chord without a re-render. `<AmnesiaShortcuts scopeId="..." />` pins.
 - `useAmnesiaFocusClaim(scopeId)` returns capture-phase focus / pointer-down handlers. On the component's unmount it releases its claim if it was active.
-- `clearAll()` (from `useAmnesiaScopes()` or the api) iterates every registered scope and calls `clear()`. Per-scope `clear()` (from `useAmnesia(scopeId).clear()`) clears only that scope.
+- `clear(scopeId?)` on the provider api (and `useAmnesiaScopes().clear`) iterates every registered scope when called with no argument. With a `scopeId` argument it clears only that scope (lazily creating it if needed). The per-scope store's own `clear()` (e.g. via `useAmnesia(scopeId).clear()`) clears just its own stacks and takes no argument.
 
 ## Type Sourcing Rules
 

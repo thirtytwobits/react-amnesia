@@ -163,7 +163,7 @@ describe("multi-scope routing", () => {
         expect(screen.getByTestId("props-value").textContent).toBe("1");
     });
 
-    it("clearAll() clears every scope; per-scope clear() clears one", async () => {
+    it("clear() clears every scope; clear(scopeId) clears one", async () => {
         let externalApi: ReturnType<typeof useAmnesiaProviderApi> | null = null;
         function Probe() {
             externalApi = useAmnesiaProviderApi();
@@ -199,13 +199,13 @@ describe("multi-scope routing", () => {
         expect(api.getScope("a").getSnapshot().canUndo).toBe(true);
         expect(api.getScope("b").getSnapshot().canUndo).toBe(true);
 
-        // Clear only "a".
-        api.getScope("a").clear();
+        // Clear only "a" via the scope-targeted form.
+        api.clear("a");
         expect(api.getScope("a").getSnapshot().canUndo).toBe(false);
         expect(api.getScope("b").getSnapshot().canUndo).toBe(true);
 
-        // Now clearAll clears the rest.
-        api.clearAll();
+        // Now clear() with no arg clears the rest.
+        api.clear();
         expect(api.getScope("b").getSnapshot().canUndo).toBe(false);
     });
 

@@ -14,8 +14,8 @@ export {
     AmnesiaProvider,
     useAmnesiaProviderApi,
     useAmnesiaProviderApiOptional,
-    useAmnesiaStore,
-    useAmnesiaStoreOptional,
+    useAmnesiaScope,
+    useAmnesiaScopeOptional,
 } from "./Amnesia/provider";
 export type { AmnesiaProviderProps } from "./Amnesia/provider";
 export { DEFAULT_SCOPE_ID } from "./Amnesia/provider-api";

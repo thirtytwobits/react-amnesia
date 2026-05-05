@@ -304,4 +304,4 @@ Wrong:
 Prefer:
 
 - one explicit provider per undo scope (often per document or workspace)
-- `useAmnesiaStoreOptional()` only for reusable components that should silently degrade outside a provider
+- `useAmnesiaScopeOptional()` only for reusable components that should silently degrade outside a provider

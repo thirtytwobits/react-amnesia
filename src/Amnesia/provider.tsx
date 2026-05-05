@@ -115,7 +115,7 @@ export function useAmnesiaProviderApiOptional(): AmnesiaProviderApi | null {
  * changes. Without one, tracks the current active scope and re-renders
  * when it changes.
  */
-export function useAmnesiaStore(scopeId?: string): Amnesia {
+export function useAmnesiaScope(scopeId?: string): Amnesia {
     const api = useAmnesiaProviderApi();
     const subscribe = scopeId !== undefined ? noopSubscribe : api.subscribeActive;
     const getSnapshot = useMemo(() => {
@@ -130,7 +130,7 @@ export function useAmnesiaStore(scopeId?: string): Amnesia {
  * Returns the active-scope-tracking store when a provider is mounted;
  * otherwise `null`.
  */
-export function useAmnesiaStoreOptional(): Amnesia | null {
+export function useAmnesiaScopeOptional(): Amnesia | null {
     const api = useAmnesiaProviderApiOptional();
     const subscribe = api?.subscribeActive ?? noopSubscribe;
     const getSnapshot = useMemo(() => {

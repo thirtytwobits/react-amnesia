@@ -83,8 +83,13 @@ export interface AmnesiaProviderApi {
      */
     release: (scopeId: string) => void;
 
-    /** Synchronously clear past + future of every registered scope. */
-    clearAll: () => void;
+    /**
+     * Synchronously clear past + future. With no argument, every registered
+     * scope is cleared. With a `scopeId`, only that scope is cleared (lazily
+     * creating it if it does not yet exist, so a subsequent `getScope` call
+     * sees a consistent empty store).
+     */
+    clear: (scopeId?: string) => void;
 }
 
 /**
@@ -170,10 +175,14 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         };
     };
 
-    const clearAll = (): void => {
-        for (const store of stores.values()) {
-            store.clear();
+    const clear = (scopeId?: string): void => {
+        if (scopeId === undefined) {
+            for (const store of stores.values()) {
+                store.clear();
+            }
+            return;
         }
+        getScope(scopeId).clear();
     };
 
     return {
@@ -183,6 +192,6 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         subscribeActive,
         claim,
         release,
-        clearAll,
+        clear,
     };
 }

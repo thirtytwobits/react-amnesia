@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
-import { useAmnesiaProviderApi, useAmnesiaStore } from "./provider";
+import { useAmnesiaProviderApi, useAmnesiaScope } from "./provider";
 import type { Amnesia, AmnesiaState, Command, PushOptions } from "./types";
 
 /**
@@ -49,7 +49,7 @@ export interface UseAmnesiaResult extends AmnesiaState {
  */
 export function useAmnesia(scopeId?: string): UseAmnesiaResult {
     const api = useAmnesiaProviderApi();
-    const store = useAmnesiaStore(scopeId);
+    const store = useAmnesiaScope(scopeId);
     const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 
     const push = useCallback<Amnesia["push"]>((command, options) => store.push(command, options), [store]);

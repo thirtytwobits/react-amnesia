@@ -6,7 +6,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createAmnesiaStore } from "./history";
-import { AmnesiaProvider, useAmnesiaStore } from "./provider";
+import { AmnesiaProvider, useAmnesiaScope } from "./provider";
 import { AmnesiaShortcuts } from "./shortcuts";
 import type { Amnesia } from "./types";
 import { useAmnesia } from "./use";
@@ -197,7 +197,7 @@ describe("AmnesiaProvider — strict mode + lifecycle", () => {
 
         const ownedRef: { current: Amnesia | null } = { current: null };
         function Probe() {
-            ownedRef.current = useAmnesiaStore();
+            ownedRef.current = useAmnesiaScope();
             return null;
         }
         const owned = render(
