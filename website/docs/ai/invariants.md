@@ -42,6 +42,20 @@ guarantees.
 - The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
 - Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
 
+## Cancellation (AbortSignal)
+
+- Every `Command` handler (`do`, `redo`, `undo`) and every `transaction` `work` function receives an `AbortSignal` as its (first / second) argument.
+- One `AbortController` is created per operation. The signal is **aborted** when `clear()` or `dispose()` runs on that scope while the operation is in flight.
+- Sibling operations on the same scope don't share signals; each gets its own controller.
+- Nested transactions share the outer transaction's signal — they flatten into the same buffer, so a single cancellation propagates through nested work.
+- Synchronous handlers receive a signal too, but it is never aborted before they return.
+- Handler treatment of cancellation:
+    - **Honored**: handler observes `signal.aborted` and rejects (any error). The op resolves to `null`, no entry is committed, no `onError` fires. This is the silent path.
+    - **Ignored**: handler completes normally despite the abort. The epoch check still drops the commit, and `onError({ phase: "stale", recoverable: false })` fires.
+    - **Real failure** (signal not aborted): handler throws. Same behavior as before — `onError` with the appropriate phase, `push` rejects to caller, `undo` / `redo` leave the entry in place.
+- Transaction rollback uses a fresh `AbortSignal` (the original was already aborted), so buffered undos can do their own cleanup work even during a cancellation.
+- The composite entry's `redo` and `undo` (built from a transaction) propagate their caller's signal to every buffered handler in the order they were pushed (redo) or reverse order (undo).
+
 ## DevTools Registry
 
 - `<AmnesiaProvider enableDevTools>` lazily installs `window.__REACT_AMNESIA_DEVTOOLS__` on first mount and registers the provider's inspection api under `devToolsId` (auto-generated `amnesia-N` if omitted).

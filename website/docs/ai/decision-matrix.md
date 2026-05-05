@@ -98,6 +98,18 @@ would change user behavior after a Ctrl+Z.
 | Need different telemetry on first-apply vs replay                                    | `do` for the original, `redo` for replays |
 | Want to coalesce a burst into one entry                                              | `coalesceKey`; each push's `do` runs at its own push time, the merged entry stores the latest `redo` |
 
+## Cancellation Strategy
+
+| Scenario                                                                            | What you do                                                          |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Handler does an HTTP call                                                           | `fetch(url, { signal })` — auto-cancels on `clear()` / `dispose()`   |
+| Handler runs a long synchronous loop                                                | `if (signal.aborted) return` (or throw) at the top of each iteration |
+| Handler is sync and fast                                                            | Ignore the signal — it can't abort before the function returns       |
+| You want a clean cancellation (no error log)                                        | Throw an `AbortError`-shaped error after observing `signal.aborted`  |
+| You want the existing stale-drop behavior with an `onError` event                   | Ignore the signal entirely; the epoch check still drops the commit  |
+| Transaction needs to cancel a multi-step network workflow                           | Pass the work-fn's `signal` to every `fetch` and to nested commands  |
+| Two ops should share cancellation                                                   | Wrap them in one `transaction` — the work-fn's signal covers both    |
+
 ## Sync vs Async Command Handlers
 
 | Need                                                                       | Recommendation                                                       |

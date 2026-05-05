@@ -405,6 +405,41 @@ Prefer:
 - treat the entry as a self-contained unit: any state `redo` / `undo` needs
   must be captured at push time, never recomputed inside the closures
 
+## Ignoring The AbortSignal On Long-Running Async Handlers
+
+The signal arrives as the only argument to every command handler (and as
+the second argument to a transaction's `work`). Async handlers that pass
+it to `fetch` or check `signal.aborted` in long loops cancel cleanly when
+`clear()` / `dispose()` runs. Handlers that ignore it run to completion
+unnecessarily and end up firing `onError({ phase: "stale" })` when their
+result is dropped.
+
+Wrong:
+
+```tsx
+push({
+    redo: async () => {
+        await api.applyTheme(next); // ignores cancellation
+    },
+    undo: async () => api.applyTheme(current),
+});
+```
+
+Prefer:
+
+```tsx
+push({
+    redo: async (signal) => {
+        await api.applyTheme(next, { signal });
+    },
+    undo: async (signal) => api.applyTheme(current, { signal }),
+});
+```
+
+The handler that honors the signal completes silently when cancelled (no
+`onError`, no log noise). The one that ignores it still drops the commit
+but produces a `phase: "stale"` event in your error handler.
+
 ## Awaiting `push` Inside Render
 
 Calling `await store.push(...)` inside a render function, `useMemo`, or any

@@ -624,7 +624,60 @@ The registry is **opt-in**: when no provider sets `enableDevTools`, no
 global is created. When enabled, provider entries are held weakly so the
 registry never prevents an unmounted provider from being garbage-collected.
 
-## 17. Custom Error Reporting
+## 17. Cancellable Async Command With AbortSignal
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+export function ApplyServerThemeButton({
+    next,
+    current,
+    api,
+}: {
+    next: "light" | "dark";
+    current: "light" | "dark";
+    api: { applyTheme: (value: "light" | "dark", init?: RequestInit) => Promise<void> };
+}) {
+    const { push, pending } = useAmnesia();
+
+    return (
+        <button
+            disabled={pending}
+            onClick={async () => {
+                await push({
+                    label: "Change theme",
+                    redo: async (signal) => {
+                        // Pass the signal to fetch so a clear() / dispose()
+                        // mid-flight cancels the network call cleanly.
+                        await api.applyTheme(next, { signal });
+                    },
+                    undo: async (signal) => {
+                        await api.applyTheme(current, { signal });
+                    },
+                });
+            }}
+        >
+            Switch to {next}
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the handler does a network call or other cancellable async work
+- you want `clear()` / `dispose()` to cancel mid-flight cleanly without a
+  spurious `onError` log
+- the call is part of a transaction whose `work` already receives a
+  signal — pass that signal through to every command and `fetch`
+
+A handler that honors the signal and rejects with an `AbortError`-shaped
+error after `signal.aborted === true` produces a silent no-op: no
+`onError` event, the entry is dropped. A handler that ignores the signal
+still drops the commit via the epoch check, but `onError({ phase: "stale" })`
+fires.
+
+## 18. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -648,7 +701,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 18. History Breadcrumb UI
+## 19. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";

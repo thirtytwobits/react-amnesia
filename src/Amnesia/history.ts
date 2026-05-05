@@ -35,8 +35,8 @@ import type {
 } from "./types";
 
 interface InternalEntry extends HistoryEntry {
-    redo: () => void | Promise<void>;
-    undo: () => void | Promise<void>;
+    redo: (signal: AbortSignal) => void | Promise<void>;
+    undo: (signal: AbortSignal) => void | Promise<void>;
 }
 
 const DEFAULT_CAPACITY = 100;
@@ -69,12 +69,19 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     let nextId = 1;
     let disposed = false;
     const pendingTokens = new Set<symbol>();
+    // Per-op AbortControllers. `clear()` and `dispose()` call `abort()` on
+    // every controller in this map so async handlers that pass the signal
+    // to `fetch` (or check `signal.aborted` in long loops) cancel cleanly.
+    // Sync handlers receive a signal too, but it is never aborted before
+    // they return.
+    const inFlightControllers = new Map<symbol, AbortController>();
 
     interface TransactionState {
         label: string | undefined;
-        bufferedRedos: Array<() => void | Promise<void>>;
-        bufferedUndos: Array<() => void | Promise<void>>;
+        bufferedRedos: Array<(signal: AbortSignal) => void | Promise<void>>;
+        bufferedUndos: Array<(signal: AbortSignal) => void | Promise<void>>;
         closed: boolean;
+        controller: AbortController;
     }
     let activeTransaction: TransactionState | null = null;
     let snapshot: AmnesiaState = freezeSnapshot(past, future, version, epoch, pendingTokens, metaTransform);
@@ -207,7 +214,11 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
      */
     const startOp = async <TWork>(
         phase: OperationPhase,
-        prologue: () => { invoke: () => void | Promise<void>; entry?: InternalEntry; payload: TWork } | null,
+        prologue: () => {
+            invoke: (signal: AbortSignal) => void | Promise<void>;
+            entry?: InternalEntry;
+            payload: TWork;
+        } | null,
         commit: (payload: TWork) => number | null,
     ): Promise<number | null> => {
         if (disposed) return null;
@@ -220,14 +231,17 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         if (prepared === null) return null;
 
         const token = Symbol(phase);
+        const controller = new AbortController();
         const epochAtStart = epoch;
         pendingTokens.add(token);
+        inFlightControllers.set(token, controller);
 
         let raw: void | Promise<void>;
         try {
-            raw = prepared.invoke();
+            raw = prepared.invoke(controller.signal);
         } catch (error) {
             pendingTokens.delete(token);
+            inFlightControllers.delete(token);
             scheduleError(error, buildErrorContext(phase, phase !== "push", prepared.entry));
             if (phase === "push") throw error;
             return null;
@@ -235,9 +249,11 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
 
         if (!isThenable(raw)) {
             // Synchronous handler: commit and notify exactly once. No
-            // observable `pending: true` state to consumers.
+            // observable `pending: true` state to consumers. The signal
+            // could not have aborted before the synchronous return.
             const id = commit(prepared.payload);
             pendingTokens.delete(token);
+            inFlightControllers.delete(token);
             notify();
             return id;
         }
@@ -247,8 +263,15 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         try {
             await raw;
         } catch (error) {
+            if (controller.signal.aborted) {
+                // The handler honored the abort signal — silent no-op.
+                // `clear()` / `dispose()` already cleared bookkeeping, so we
+                // do not touch state or fire `onError` here.
+                return null;
+            }
             if (epoch === epochAtStart) {
                 pendingTokens.delete(token);
+                inFlightControllers.delete(token);
                 notify();
             }
             scheduleError(error, buildErrorContext(phase, phase !== "push", prepared.entry));
@@ -256,16 +279,23 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
             return null;
         }
 
-        // Epoch may have changed if clear() / dispose() ran during the await.
-        // clear() / dispose() already cleared the pending set and emitted (or
-        // torn down) the store, so we must not touch state.
-        if (epoch !== epochAtStart) {
+        // Handler resolved. Was the op aborted while the handler ignored the
+        // signal? The epoch check below covers the same condition, but
+        // documenting the abort path explicitly keeps the intent clear: a
+        // handler that drives state through the cancellation should not
+        // commit.
+        if (controller.signal.aborted || epoch !== epochAtStart) {
+            // `clear()` / `dispose()` already cleared bookkeeping — emit a
+            // stale error only if the handler ignored the signal. (When the
+            // handler honored it, the catch block above returned without
+            // firing.)
             scheduleError(undefined, buildErrorContext("stale", false, prepared.entry));
             return null;
         }
 
         const id = commit(prepared.payload);
         pendingTokens.delete(token);
+        inFlightControllers.delete(token);
         notify();
         return id;
     };
@@ -280,7 +310,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
                 // it falls back to `command.redo`. `do` is consumed here only
                 // and never stored on the entry — subsequent redos always run
                 // `command.redo`.
-                invoke: applied ? () => undefined : () => (command.do ?? command.redo)(),
+                invoke: applied ? () => undefined : (signal) => (command.do ?? command.redo)(signal),
                 payload: command,
             }),
             (cmd: Command) => {
@@ -345,7 +375,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
                 const entry = past[past.length - 1];
                 if (entry === undefined) return null;
                 return {
-                    invoke: () => entry.undo(),
+                    invoke: (signal) => entry.undo(signal),
                     entry,
                     payload: entry,
                 };
@@ -369,7 +399,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
                 const entry = future[future.length - 1];
                 if (entry === undefined) return null;
                 return {
-                    invoke: () => entry.redo(),
+                    invoke: (signal) => entry.redo(signal),
                     entry,
                     payload: entry,
                 };
@@ -393,11 +423,12 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
      * do not stop subsequent undos from running — best-effort recovery.
      */
     const runUndosInReverse = async (
-        undos: ReadonlyArray<() => void | Promise<void>>,
+        undos: ReadonlyArray<(signal: AbortSignal) => void | Promise<void>>,
+        signal: AbortSignal,
     ): Promise<void> => {
         for (let i = undos.length - 1; i >= 0; i--) {
             try {
-                const result = undos[i]!();
+                const result = undos[i]!(signal);
                 if (isThenable(result)) await result;
             } catch (error) {
                 scheduleError(error, buildErrorContext("rollback", false));
@@ -405,7 +436,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         }
     };
 
-    const makeTxApi = (state: TransactionState): TransactionApi => ({
+    const makeTxApi = (state: TransactionState, signal: AbortSignal): TransactionApi => ({
         push: async (command: Command): Promise<void> => {
             if (state.closed) {
                 throw new Error(
@@ -414,9 +445,11 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
             }
             // First-apply prefers `command.do` (Workstream B). Run it now so
             // application state mutates as the work progresses; subsequent
-            // pushes inside the transaction can read the updated state.
+            // pushes inside the transaction can read the updated state. The
+            // signal is the surrounding transaction's signal — propagate so
+            // the user's `do` can observe cancellation.
             const handler = command.do ?? command.redo;
-            const raw = handler();
+            const raw = handler(signal);
             if (isThenable(raw)) await raw;
             // The buffer stores `redo` (not `do`) so the composite's redo
             // path is replay-correct.
@@ -442,6 +475,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         if (state.bufferedRedos.length === 0) {
             // Empty transaction — release the token, notify, no entry.
             pendingTokens.delete(token);
+            inFlightControllers.delete(token);
             notify();
             return null;
         }
@@ -452,15 +486,15 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         const redos = state.bufferedRedos;
         const undos = state.bufferedUndos;
 
-        const compositeRedo = async (): Promise<void> => {
+        const compositeRedo = async (signal: AbortSignal): Promise<void> => {
             for (const handler of redos) {
-                const result = handler();
+                const result = handler(signal);
                 if (isThenable(result)) await result;
             }
         };
-        const compositeUndo = async (): Promise<void> => {
+        const compositeUndo = async (signal: AbortSignal): Promise<void> => {
             for (let i = undos.length - 1; i >= 0; i--) {
-                const result = undos[i]!();
+                const result = undos[i]!(signal);
                 if (isThenable(result)) await result;
             }
         };
@@ -482,6 +516,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
             hookQueue.push({ kind: "push", entry: toPublic(entry, metaTransform) });
         }
         pendingTokens.delete(token);
+        inFlightControllers.delete(token);
         notify();
         return entry.id;
     };
@@ -489,12 +524,12 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     const transaction: Amnesia["transaction"] = (
         labelOrWork:
             | string
-            | ((tx: TransactionApi) => void | Promise<void>),
-        maybeWork?: (tx: TransactionApi) => void | Promise<void>,
+            | ((tx: TransactionApi, signal: AbortSignal) => void | Promise<void>),
+        maybeWork?: (tx: TransactionApi, signal: AbortSignal) => void | Promise<void>,
     ): Promise<number | null> => {
         const label = typeof labelOrWork === "string" ? labelOrWork : undefined;
         const work = (typeof labelOrWork === "function" ? labelOrWork : maybeWork) as
-            | ((tx: TransactionApi) => void | Promise<void>)
+            | ((tx: TransactionApi, signal: AbortSignal) => void | Promise<void>)
             | undefined;
         if (typeof work !== "function") {
             return Promise.reject(new TypeError("[Amnesia] transaction(): work function is required"));
@@ -502,18 +537,28 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         return runTransaction(label, work);
     };
 
+    /**
+     * Build a fresh AbortSignal for rollback handlers — the surrounding
+     * transaction's signal has already been aborted (or never was) and
+     * cannot be reused.
+     */
+    const freshSignal = (): AbortSignal => new AbortController().signal;
+
     async function runTransaction(
         label: string | undefined,
-        work: (tx: TransactionApi) => void | Promise<void>,
+        work: (tx: TransactionApi, signal: AbortSignal) => void | Promise<void>,
     ): Promise<number | null> {
         if (disposed) return null;
 
         // Nested call: flatten into the existing transaction. The nested
         // `label` parameter is intentionally ignored — the outermost
         // `transaction(...)` argument or any `tx.label(...)` call wins.
+        // The nested call shares the outer transaction's signal so any
+        // cancellation propagates to nested work too.
         if (activeTransaction !== null) {
-            const txApi = makeTxApi(activeTransaction);
-            const inner = work(txApi);
+            const outerController = activeTransaction.controller;
+            const txApi = makeTxApi(activeTransaction, outerController.signal);
+            const inner = work(txApi, outerController.signal);
             if (isThenable(inner)) await inner;
             return null;
         }
@@ -524,26 +569,30 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         }
 
         const token = Symbol("tx");
+        const controller = new AbortController();
         const epochAtStart = epoch;
         const state: TransactionState = {
             label,
             bufferedRedos: [],
             bufferedUndos: [],
             closed: false,
+            controller,
         };
 
         activeTransaction = state;
         pendingTokens.add(token);
+        inFlightControllers.set(token, controller);
 
         let raw: void | Promise<void>;
         try {
-            raw = work(makeTxApi(state));
+            raw = work(makeTxApi(state, controller.signal), controller.signal);
         } catch (error) {
             // Synchronous throw from `work` — close, rollback, re-throw.
             state.closed = true;
             activeTransaction = null;
             pendingTokens.delete(token);
-            await runUndosInReverse(state.bufferedUndos);
+            inFlightControllers.delete(token);
+            await runUndosInReverse(state.bufferedUndos, freshSignal());
             scheduleError(error, buildErrorContext("push", false));
             throw error;
         }
@@ -563,21 +612,32 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         } catch (error) {
             state.closed = true;
             activeTransaction = null;
+            if (controller.signal.aborted) {
+                // The work honored the abort signal — silent rollback. The
+                // outer `clear()` / `dispose()` already cleared bookkeeping.
+                await runUndosInReverse(state.bufferedUndos, freshSignal());
+                return null;
+            }
             if (epoch === epochAtStart) {
                 pendingTokens.delete(token);
+                inFlightControllers.delete(token);
                 notify();
             }
-            await runUndosInReverse(state.bufferedUndos);
+            await runUndosInReverse(state.bufferedUndos, freshSignal());
             scheduleError(error, buildErrorContext("push", false));
             throw error;
         }
 
         // Stale check: did `clear()` / `dispose()` run during the await?
-        if (epoch !== epochAtStart) {
+        // (Either `controller.signal.aborted` or `epoch !== epochAtStart` —
+        // both indicate the same condition.)
+        if (controller.signal.aborted || epoch !== epochAtStart) {
             state.closed = true;
             activeTransaction = null;
-            // pendingTokens already cleared by clear() / dispose().
-            await runUndosInReverse(state.bufferedUndos);
+            // pendingTokens / inFlightControllers already cleared by
+            // clear() / dispose(). Run rollback so application state is
+            // restored, fire `phase: "stale"`, return null.
+            await runUndosInReverse(state.bufferedUndos, freshSignal());
             scheduleError(undefined, buildErrorContext("stale", false));
             return null;
         }
@@ -596,6 +656,14 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         // Bump epoch so any in-flight async op detects the staleness on
         // resume and resolves as a stale-drop without committing.
         epoch += 1;
+        // Abort every in-flight controller so handlers that pass the signal
+        // to fetch (or check signal.aborted in long loops) cancel cleanly.
+        // Handlers that ignore the signal still drop the commit via the
+        // epoch check above.
+        for (const controller of inFlightControllers.values()) {
+            controller.abort();
+        }
+        inFlightControllers.clear();
         pendingTokens.clear();
         // Detach any in-flight transaction. Its still-suspended await will
         // notice the epoch bump and run rollback against its captured
@@ -612,10 +680,14 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     const dispose: Amnesia["dispose"] = (): void => {
         if (disposed) return;
         disposed = true;
-        // Bump epoch + drop pending tokens so awaiting ops resolve as no-ops.
-        // Do not notify subscribers — listeners are typically being torn down
-        // by the unmounting provider.
+        // Bump epoch + abort + drop pending tokens so awaiting ops resolve
+        // as no-ops. Do not notify subscribers — listeners are typically
+        // being torn down by the unmounting provider.
         epoch += 1;
+        for (const controller of inFlightControllers.values()) {
+            controller.abort();
+        }
+        inFlightControllers.clear();
         pendingTokens.clear();
         // Detach any in-flight transaction; see `clear()` for rationale.
         activeTransaction = null;

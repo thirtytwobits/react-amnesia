@@ -34,6 +34,17 @@
  * Promise, the surrounding `push` / `undo` / `redo` call awaits it; the store
  * stays in a `pending` state for the duration of the await and other concurrent
  * operations are dropped (see `AmnesiaState.pending`).
+ *
+ * Each handler is called with an `AbortSignal` argument. The signal aborts
+ * when `clear()`, `dispose()`, or scope teardown runs while the handler is
+ * in flight. Async handlers can pass the signal to `fetch` (which cancels
+ * the network call automatically) or check `signal.aborted` in long loops.
+ * A rejection thrown after `signal.aborted === true` is treated as a silent
+ * no-op — no `onError` event fires, the entry is dropped. Handlers that
+ * ignore the signal still drop the commit via the existing epoch check;
+ * the difference is that `onError({ phase: "stale" })` then fires.
+ * Synchronous handlers receive a signal too, but it is never aborted before
+ * they return.
  */
 export interface Command {
     /**
@@ -44,8 +55,8 @@ export interface Command {
 
     /**
      * Optional initial-apply handler. When present and `push` is called
-     * without `applied: true`, `do()` is invoked exactly once at push time
-     * instead of `redo()`.
+     * without `applied: true`, `do(signal)` is invoked exactly once at push
+     * time instead of `redo(signal)`.
      *
      * `do` is **consumed at push time and is not stored on the entry** —
      * subsequent `redo()` calls always invoke `command.redo`. Use this when
@@ -57,7 +68,7 @@ export interface Command {
      *
      * May be synchronous or return a Promise.
      */
-    do?: () => void | Promise<void>;
+    do?: (signal: AbortSignal) => void | Promise<void>;
 
     /**
      * Apply (or re-apply) the action.
@@ -67,14 +78,14 @@ export interface Command {
      *
      * May be synchronous or return a Promise.
      */
-    redo: () => void | Promise<void>;
+    redo: (signal: AbortSignal) => void | Promise<void>;
 
     /**
      * Revert the action. Called on every `undo()` for this entry.
      *
      * May be synchronous or return a Promise.
      */
-    undo: () => void | Promise<void>;
+    undo: (signal: AbortSignal) => void | Promise<void>;
 
     /**
      * Coalesce key. Consecutive `push`es with the same non-empty key collapse
@@ -365,6 +376,13 @@ export interface AmnesiaProviderOptions extends Omit<AmnesiaStoreOptions, "onPus
  *
  * The handle is **closed** after the surrounding `transaction(...)` call
  * resolves. Calling `tx.push` or `tx.label` past that point throws.
+ *
+ * The work function also receives an `AbortSignal` as its second argument
+ * (see {@link Amnesia.transaction}). The signal aborts when `clear()` or
+ * `dispose()` runs while the transaction is mid-flight. Pass it to
+ * `fetch`, child commands, or long-running loops so cancellation
+ * propagates through the work. A rejection thrown after `signal.aborted
+ * === true` is treated as a silent no-op (no `onError`, just rollback).
  */
 export interface TransactionApi {
     /**
@@ -473,8 +491,11 @@ export interface Amnesia {
      * transaction is always its own entry.
      */
     transaction: {
-        (work: (tx: TransactionApi) => void | Promise<void>): Promise<number | null>;
-        (label: string, work: (tx: TransactionApi) => void | Promise<void>): Promise<number | null>;
+        (work: (tx: TransactionApi, signal: AbortSignal) => void | Promise<void>): Promise<number | null>;
+        (
+            label: string,
+            work: (tx: TransactionApi, signal: AbortSignal) => void | Promise<void>,
+        ): Promise<number | null>;
     };
 
     /**
