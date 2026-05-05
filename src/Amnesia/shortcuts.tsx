@@ -15,15 +15,31 @@ import { useEffect } from "react";
 import { useAmnesiaProviderApi } from "./provider";
 
 /**
+ * Acceptable values for `AmnesiaShortcutsProps.target`.
+ *
+ * - `"window"` (the default) — listen on `window`.
+ * - `"document"` — listen on `document`. Useful when something stops
+ *   propagation before reaching `window`.
+ * - An `HTMLElement` / `Document` / `Window` — listen on that exact target.
+ *   Useful for region-scoped surfaces (canvas, custom editor).
+ * - `null` — do not attach a listener at all.
+ *
+ * The string forms are resolved at handler-attach time inside `useEffect`,
+ * so they are SSR-safe — passing `"document"` from a component that may
+ * render on the server will not throw.
+ */
+export type AmnesiaShortcutsTarget = HTMLElement | Document | Window | "document" | "window" | null;
+
+/**
  * Props for `AmnesiaShortcuts`.
  */
 export interface AmnesiaShortcutsProps {
     /**
-     * DOM element to attach the listener to. Defaults to `window`. Pass a
-     * specific element when you only want shortcuts active inside a
-     * particular surface (e.g. a canvas region).
+     * DOM target (or string alias) to attach the listener to. Defaults to
+     * `"window"`. See {@link AmnesiaShortcutsTarget} for the full set of
+     * acceptable values.
      */
-    target?: HTMLElement | Document | Window | null;
+    target?: AmnesiaShortcutsTarget;
 
     /**
      * Pin the binding to a specific scope. When omitted, the chord routes
@@ -34,9 +50,14 @@ export interface AmnesiaShortcutsProps {
 
     /**
      * When `true`, shortcuts are ignored while focus is on a native editable
-     * surface (`<input>`, `<textarea>`, `contenteditable`). Browsers ship
-     * their own undo stack for those, and stealing the chord usually breaks
-     * user expectations.
+     * surface (`<input>`, `<textarea>`, `<select>`, or `contenteditable`).
+     * Browsers ship their own undo stack for those, and stealing the chord
+     * usually breaks user expectations.
+     *
+     * The check is **shadow-DOM transparent**: events that originate inside
+     * an open shadow root whose deep target is editable are also skipped,
+     * even though `event.target` is retargeted to the host outside the
+     * shadow boundary.
      *
      * Defaults to `true`.
      */
@@ -83,7 +104,7 @@ export function AmnesiaShortcuts(props: AmnesiaShortcutsProps): null {
             const ke = event as KeyboardEvent;
             if (ke.defaultPrevented) return;
             if (ke.altKey) return;
-            if (skipEditableTargets && isEditableTarget(ke.target)) return;
+            if (skipEditableTargets && isEditableTarget(ke)) return;
             const mod = ke.metaKey || ke.ctrlKey;
             if (!mod) return;
 
@@ -115,17 +136,31 @@ export function AmnesiaShortcuts(props: AmnesiaShortcutsProps): null {
     return null;
 }
 
-function resolveTarget(target: AmnesiaShortcutsProps["target"]): EventTarget | null {
+function resolveTarget(target: AmnesiaShortcutsTarget | undefined): EventTarget | null {
     if (target === null) return null;
+    if (target === "document") return typeof document !== "undefined" ? document : null;
+    if (target === "window") return typeof window !== "undefined" ? window : null;
     if (target !== undefined) return target;
     if (typeof window === "undefined") return null;
     return window;
 }
 
-function isEditableTarget(node: EventTarget | null): boolean {
-    if (!(node instanceof HTMLElement)) return false;
-    const tag = node.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-    if (node.isContentEditable) return true;
+/**
+ * Determine whether a keydown event originated inside a native editable
+ * region (`<input>`, `<textarea>`, `<select>`, or `contenteditable`).
+ *
+ * Walks `event.composedPath()` so editables inside open shadow roots are
+ * detected even when `event.target` has been retargeted to the host. Falls
+ * back to `event.target` only when `composedPath` is unavailable.
+ */
+function isEditableTarget(event: KeyboardEvent): boolean {
+    const composed: EventTarget[] = typeof event.composedPath === "function" ? event.composedPath() : [];
+    const candidates: ReadonlyArray<EventTarget> = composed.length > 0 ? composed : event.target ? [event.target] : [];
+    for (const node of candidates) {
+        if (!(node instanceof HTMLElement)) continue;
+        const tag = node.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (node.isContentEditable) return true;
+    }
     return false;
 }

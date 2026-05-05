@@ -87,6 +87,30 @@ Prefer:
 - a separate, append-only log for compliance or analytics
 - treating the undo stack as a UX affordance only
 
+## Expecting Closed Shadow Roots To Be Inspected
+
+`<AmnesiaShortcuts skipEditableTargets={true} />` walks
+`event.composedPath()` to detect editables across shadow boundaries.
+Closed shadow roots (`element.attachShadow({ mode: "closed" })`) are
+**deliberately opaque**: `composedPath` does not enter them, and the
+browser's design intent is that their internals stay hidden from outside
+listeners.
+
+Wrong:
+
+- expecting an `<input>` inside a `mode: "closed"` shadow root to be
+  recognized as editable
+- working around this by patching `attachShadow` or stealing the closed
+  root reference
+
+Prefer:
+
+- use `mode: "open"` on shadow roots that should cooperate with app-level
+  shortcuts
+- if the host author shipped `mode: "closed"` and you can't change it,
+  expose an explicit `target` element on the host or have the host call
+  `event.preventDefault()` on chords it handles itself
+
 ## Stealing The Browser's Native Undo Inside Inputs
 
 The browser ships its own undo for `<input>`, `<textarea>`, and

@@ -88,7 +88,9 @@ Read these pages in order when context is tight:
 - Two pushes coalesce only when they share the same non-empty `coalesceKey` and arrive within `coalesceWindowMs` of each other.
 - Capacity defaults to `100`. When the limit is reached, the oldest past entry is dropped silently — do not rely on history for audit trails.
 - `clear()` is synchronous. It drops both stacks, bumps the `epoch` counter, empties the pending set, and notifies subscribers once.
-- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles `<input>`, `<textarea>`, `<select>`, and `contenteditable` regions.
+- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles `<input>`, `<textarea>`, `<select>`, and `contenteditable` regions. The check walks `event.composedPath()` so editables inside open shadow roots (Lit / web components) are also recognized.
+- `<AmnesiaShortcuts />` ignores chords with `event.defaultPrevented === true` (an upstream handler already claimed it) and ignores `Alt`-modified chords (`Ctrl+Alt+Z` is not Undo).
+- `target` accepts `HTMLElement | Document | Window | "document" | "window" | null`. The string forms are SSR-safe — they resolve at handler-attach time inside `useEffect`, not at module load.
 - The store is single-flight. Concurrent `push` / `undo` / `redo` while one is pending resolve to `null` and fire `onError({ phase: "busy" })`.
 - An async op whose `await` outlasts a `clear()` resolves to `null` and fires `onError({ phase: "stale" })`. State has already been cleared.
 - A throwing `redo()` / `undo()` leaves the entry in place and fires `onError({ phase: "undo" | "redo", recoverable: true })`. The application is responsible for retry or recovery.

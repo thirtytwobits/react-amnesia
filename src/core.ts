@@ -27,7 +27,7 @@ export type { UndoableReset, UndoableSetter } from "./Amnesia/use-undoable-state
 export { useAmnesiaFocusClaim, useAmnesiaScopes } from "./Amnesia/use-scopes";
 export type { AmnesiaFocusClaimHandlers, UseAmnesiaScopesResult } from "./Amnesia/use-scopes";
 export { AmnesiaShortcuts } from "./Amnesia/shortcuts";
-export type { AmnesiaShortcutsProps } from "./Amnesia/shortcuts";
+export type { AmnesiaShortcutsProps, AmnesiaShortcutsTarget } from "./Amnesia/shortcuts";
 export { createAmnesiaStore } from "./Amnesia/history";
 export type {
     Amnesia,

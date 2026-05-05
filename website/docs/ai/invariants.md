@@ -123,10 +123,12 @@ guarantees.
 
 `<AmnesiaShortcuts />` is the only built-in keyboard binding. Its contract is:
 
-- Mounts a `keydown` listener on `target` (defaults to `window`). When `target === null`, no listener is attached.
+- Mounts a `keydown` listener on `target`. Defaults to `window`. Accepts an `HTMLElement | Document | Window | "document" | "window" | null`. The string forms `"document"` / `"window"` resolve inside `useEffect`, so they are SSR-safe. `target === null` attaches no listener.
 - Bindings: `Ctrl+Z` / `Cmd+Z` for undo; `Ctrl+Shift+Z`, `Cmd+Shift+Z`, and `Ctrl+Y` for redo.
-- When `skipEditableTargets` is `true` (default), chords whose `event.target` is an `<input>`, `<textarea>`, `<select>`, or `contenteditable` element are ignored so the browser's native undo handles them.
-- When `preventDefault` is `true` (default), `event.preventDefault()` is called only after a successful undo or redo.
+- Ignores any keydown whose `event.defaultPrevented === true` — an upstream handler has already claimed the chord.
+- Ignores any keydown with `event.altKey === true`. Alt-modified chords are intentionally separate from Undo / Redo.
+- When `skipEditableTargets` is `true` (default), chords are ignored when `event.composedPath()` contains an `<input>`, `<textarea>`, `<select>`, or `contenteditable` element. The composed-path walk is **shadow-DOM transparent**: editables inside open shadow roots are recognized even though `event.target` has been retargeted to the host. Falls back to `event.target` only when `composedPath` is unavailable.
+- When `preventDefault` is `true` (default), `event.preventDefault()` is called whenever the chord matches and shortcuts are not skipped — regardless of whether an entry exists to undo / redo. This is required because async `undo` / `redo` cannot synchronously decide whether to suppress the browser's native chord.
 - When `enabled` is `false`, the listener is detached. Toggle this rather than unmounting the component if a modal needs to own the chord temporarily.
 
 ## Persistence Bridge Boundaries

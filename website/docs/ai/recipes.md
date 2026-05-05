@@ -203,7 +203,37 @@ Use when only a specific surface should respond to undo / redo chords. Setting
 `skipEditableTargets` to `false` is appropriate here because the canvas
 region is not a native editable target.
 
-## 8. Reversible Multi-Key Persisted Action
+## 8. Web-Component / Shadow-DOM Editable
+
+```tsx
+import { AmnesiaShortcuts } from "react-amnesia";
+
+// A Lit / web-component editor renders an <input> inside its shadow root.
+// `<my-rich-editor>` exposes the input only inside `mode: "open"` shadow.
+export function App() {
+    return (
+        <>
+            <AmnesiaShortcuts target="document" />
+            <my-rich-editor />
+        </>
+    );
+}
+```
+
+Use when:
+
+- the app embeds web components (Lit, Stencil, FAST, custom elements) that
+  contain native editables inside their open shadow root
+- you want the browser's native undo to keep working inside those editables
+  without disabling app-level Ctrl+Z entirely
+
+`<AmnesiaShortcuts />` walks `event.composedPath()` to detect editables
+across shadow boundaries, so a chord originating in the shadow-DOM input
+is correctly skipped under the default `skipEditableTargets={true}`.
+Closed shadow roots (`mode: "closed"`) are intentionally opaque — the
+host author has chosen to hide them, and `composedPath` reflects that.
+
+## 9. Reversible Multi-Key Persisted Action (Pre-Transactions Pattern)
 
 ```tsx
 import { useMnemonicKey } from "react-mnemonic";
@@ -247,7 +277,7 @@ Use when one user action mutates several persisted keys and the inverse must
 restore them as a unit. `usePersistedUndoableState` covers single keys; this
 pattern handles compound, atomic actions.
 
-## 9. Async Command (Server-Backed Setting)
+## 10. Async Command (Server-Backed Setting)
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -295,7 +325,7 @@ Use when:
 The handler returning a Promise causes the store to flip `pending: true` for
 the duration of the await. Subscribers see the busy state synchronously.
 
-## 10. Divergent First-Apply With `Command.do`
+## 11. Divergent First-Apply With `Command.do`
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -347,7 +377,7 @@ Use when:
 
 `do` runs once at push time. Subsequent redos always invoke `command.redo`.
 
-## 11. Multi-Scope Authoring App
+## 12. Multi-Scope Authoring App
 
 ```tsx
 import {
@@ -414,7 +444,7 @@ surface owns its own history; clicking into one shifts the active claim.
 Both `useUndoableState` calls pin to their scope so React state never moves
 between scopes when the user's focus shifts.
 
-## 12. Transaction (Multi-Step Composite Entry)
+## 13. Transaction (Multi-Step Composite Entry)
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -467,7 +497,7 @@ If the `work` function throws or rejects, every buffered undo runs in
 reverse before the rejection propagates. `clear()` or `dispose()` during the
 await stales the transaction the same way.
 
-## 13. Telemetry With Lifecycle Hooks + `metaTransform`
+## 14. Telemetry With Lifecycle Hooks + `metaTransform`
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -511,7 +541,7 @@ public snapshot. Telemetry handlers and history-list UI both see the
 sanitized form. A throwing transform safely strips `meta` rather than
 leaking unsanitized values.
 
-## 14. Discard-Changes With `reset`
+## 15. Discard-Changes With `reset`
 
 ```tsx
 import { useUndoableState } from "react-amnesia";
@@ -549,7 +579,7 @@ in the same microtask. There is no entry to undo back to the pre-reset
 state — that is the point. If you want the discard to itself be undoable,
 push a normal command instead.
 
-## 15. Custom Error Reporting
+## 16. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -573,7 +603,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 16. History Breadcrumb UI
+## 17. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
