@@ -64,7 +64,7 @@ describe("AmnesiaShortcuts — Workstream G polish", () => {
         expect(screen.getByTestId("count").textContent).toBe("1");
     });
 
-    it("attaches to document when target=\"document\"", async () => {
+    it('attaches to document when target="document"', async () => {
         const user = userEvent.setup();
         render(
             <AmnesiaProvider>
@@ -81,7 +81,7 @@ describe("AmnesiaShortcuts — Workstream G polish", () => {
         expect(screen.getByTestId("count").textContent).toBe("1");
     });
 
-    it("attaches to window when target=\"window\" (default behavior, made explicit)", async () => {
+    it('attaches to window when target="window" (default behavior, made explicit)', async () => {
         const user = userEvent.setup();
         render(
             <AmnesiaProvider>

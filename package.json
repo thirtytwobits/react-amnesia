@@ -47,8 +47,11 @@
         "lint": "tsc -p tsconfig.json --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "docs:ai": "node ./scripts/generate-agent-instructions.mjs",
-        "ai:check": "node ./scripts/generate-agent-instructions.mjs --check"
+        "docs:ai": "node ./website/scripts/generate-ai-assets.mjs && node ./scripts/generate-agent-instructions.mjs",
+        "ai:check": "node ./website/scripts/generate-ai-assets.mjs --check && node ./scripts/generate-agent-instructions.mjs --check",
+        "docs": "npm --prefix website run typedoc",
+        "docs:site": "npm --prefix website run build",
+        "docs:site:start": "npm --prefix website start"
     },
     "keywords": [
         "react",
@@ -59,7 +62,11 @@
         "command-pattern",
         "ctrl-z",
         "typescript",
-        "ai-friendly"
+        "ai-friendly",
+        "transactions",
+        "abortsignal",
+        "devtools",
+        "multi-scope"
     ],
     "author": "Scott Dixon",
     "license": "MIT",

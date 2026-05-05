@@ -10,7 +10,14 @@
  *   `clear(scopeId?)` helper.
  */
 
-import { useCallback, useEffect, useMemo, useSyncExternalStore, type FocusEventHandler, type PointerEventHandler } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useSyncExternalStore,
+    type FocusEventHandler,
+    type PointerEventHandler,
+} from "react";
 import { useAmnesiaProviderApi } from "./provider";
 
 /**

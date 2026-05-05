@@ -16,13 +16,17 @@
  * - `useAmnesiaScopes()` for provider-level orchestration
  */
 
-import { createContext, useContext, useEffect, useMemo, useRef, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import {
-    createAmnesiaProviderApi,
-    DEFAULT_SCOPE_ID,
-    type AmnesiaProviderApi,
-    type ScopeOptions,
-} from "./provider-api";
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useSyncExternalStore,
+    type JSX,
+    type ReactNode,
+} from "react";
+import { createAmnesiaProviderApi, DEFAULT_SCOPE_ID, type AmnesiaProviderApi, type ScopeOptions } from "./provider-api";
 import { generateDevToolsId, registerDevToolsProvider, type AmnesiaDevToolsProviderApi } from "./devtools";
 import type { Amnesia, AmnesiaProviderOptions } from "./types";
 
@@ -89,8 +93,16 @@ export interface AmnesiaProviderProps extends Readonly<AmnesiaProviderOptions> {
  * created has no effect. Remount the provider with a `key` to reset.
  */
 export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
-    const { children, store: providedStore, capacity, coalesceWindowMs, onError, scopes, enableDevTools, devToolsId } =
-        props;
+    const {
+        children,
+        store: providedStore,
+        capacity,
+        coalesceWindowMs,
+        onError,
+        scopes,
+        enableDevTools,
+        devToolsId,
+    } = props;
 
     // Lazy ref so the api is created exactly once per component instance,
     // including under React 18 StrictMode (which double-invokes effect
@@ -110,8 +122,7 @@ export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
     // Generated devtools id sticks across re-renders. The user may pin a
     // specific id via the prop; we honor that. Generated only when needed.
     const generatedIdRef = useRef<string | null>(null);
-    const resolvedDevToolsId =
-        devToolsId ?? (generatedIdRef.current ?? (generatedIdRef.current = generateDevToolsId()));
+    const resolvedDevToolsId = devToolsId ?? generatedIdRef.current ?? (generatedIdRef.current = generateDevToolsId());
 
     useEffect(() => {
         if (!enableDevTools) return undefined;

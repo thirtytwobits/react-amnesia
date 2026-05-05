@@ -69,9 +69,7 @@ export function useAmnesia(scopeId?: string): UseAmnesiaResult {
     const clear = useCallback<Amnesia["clear"]>(() => store.clear(), [store]);
     const transaction = useCallback<Amnesia["transaction"]>(
         (
-            labelOrWork:
-                | string
-                | ((tx: TransactionApi, signal: AbortSignal) => void | Promise<void>),
+            labelOrWork: string | ((tx: TransactionApi, signal: AbortSignal) => void | Promise<void>),
             maybeWork?: (tx: TransactionApi, signal: AbortSignal) => void | Promise<void>,
         ): Promise<number | null> =>
             (store.transaction as (...args: unknown[]) => Promise<number | null>)(labelOrWork, maybeWork),

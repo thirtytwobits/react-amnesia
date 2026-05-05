@@ -1,0 +1,1894 @@
+# react-amnesia
+> Long-form AI retrieval export for the canonical react-amnesia documentation.
+
+## Canonical source pages
+
+- AI Overview: https://thirtytwobits.github.io/react-amnesia/docs/ai
+- Invariants: https://thirtytwobits.github.io/react-amnesia/docs/ai/invariants
+- Decision Matrix: https://thirtytwobits.github.io/react-amnesia/docs/ai/decision-matrix
+- Recipes: https://thirtytwobits.github.io/react-amnesia/docs/ai/recipes
+- Anti-Patterns: https://thirtytwobits.github.io/react-amnesia/docs/ai/anti-patterns
+- AI Assistant Setup: https://thirtytwobits.github.io/react-amnesia/docs/ai/assistant-setup
+
+## Machine-readable companion
+
+- https://thirtytwobits.github.io/react-amnesia/ai-contract.json
+- https://thirtytwobits.github.io/react-amnesia/llms.txt
+
+## Quick rules
+
+- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- The undo stack is in-memory only. Persist the value (e.g. via `react-mnemonic`) — never the closures.
+- `Command.do` / `redo` / `undo` may be sync or async. `push` / `undo` / `redo` always return `Promise<number | null>`.
+- Each handler receives an `AbortSignal`. `clear()` and `dispose()` abort it; pass it to `fetch` for clean cancellation.
+- An AbortError thrown after `signal.aborted === true` is a silent no-op. A handler that ignores the signal still drops the commit but fires `onError({ phase: "stale" })`.
+- The store is single-flight. Concurrent ops while `pending === true` resolve to `null` with `onError({ phase: "busy" })`.
+- `push({ redo, undo, label })` calls `redo()` once on insertion. Pass `{ applied: true }` when state is already mutated.
+- Use `coalesceKey` for keystroke / drag bursts so a single Ctrl+Z reverts the whole burst.
+- A new `push` clears the redo (future) stack — branching is not supported.
+- `useUndoableState` returns `[value, set, reset]`. `reset(next?)` clears the bound scope's history; it is not undoable.
+- Multi-scope: one provider, many independent stores. `useAmnesiaFocusClaim(scopeId)` routes Ctrl+Z to the focused scope.
+- Transactions collapse N pushes into one composite entry; throw inside `work` runs every buffered undo in reverse.
+- Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are post-notify, microtask-deferred, and re-entrant-safe.
+- `metaTransform` redacts `meta` everywhere it leaves the store — snapshot AND hooks.
+- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` and walks `composedPath()` to recognize editables in shadow roots.
+- DevTools registry (`enableDevTools`) is opt-in and lazy-installed; nothing in the bundle activates unless a provider sets it.
+- Import published values and types from `react-amnesia`, not internal paths or local ambient shims.
+
+## AI Overview
+Source: https://thirtytwobits.github.io/react-amnesia/docs/ai
+
+# AI Overview
+
+This section is the authoritative, high-signal contract for humans and coding
+assistants using `react-amnesia`.
+
+Use it when you need:
+
+- application undo/redo semantics without reading the whole repo
+- a reliable rule for `push`, `undo`, `redo`, `clear`, and coalescing
+- the shortest correct explanation of capacity, error handling, and keyboard binding
+- guidance for combining `react-amnesia` with `react-mnemonic` for persisted-yet-undoable state
+- copy-pastable patterns that stay aligned with the public API
+
+## Quick Start
+
+The minimum correct shape is: mount an `AmnesiaProvider` above every component
+that calls `useAmnesia(...)`, `useUndoableState(...)`, or
+`usePersistedUndoableState(...)`. Render exactly one `<AmnesiaShortcuts />` per
+provider for keyboard bindings.
+
+```tsx
+// main.tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import { App } from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+        <AmnesiaProvider capacity={200}>
+            <AmnesiaShortcuts />
+            <App />
+        </AmnesiaProvider>
+    </React.StrictMode>,
+);
+```
+
+Any descendant of `App` can now call `useUndoableState(...)` for reversible
+single-value state, `useAmnesia()` for direct access to the history store, or
+`push({ redo, undo, label })` for imperative commands.
+
+## Start Here
+
+Read these pages in order when context is tight:
+
+1. [Invariants](./ai/invariants)
+2. [Decision Matrix](./ai/decision-matrix)
+3. [Recipes](./ai/recipes)
+4. [Anti-Patterns](./ai/anti-patterns)
+5. [AI Assistant Setup](./ai/assistant-setup)
+
+## Quick Rules
+
+- React 18 or 19 are supported peers (`^18.0.0 || ^19.0.0`); both are exercised in CI under `<StrictMode>`.
+- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- `usePersistedUndoableState(...)` from `react-amnesia/mnemonic` must run inside both an `AmnesiaProvider` and a `MnemonicProvider`.
+- A provider owns multiple **scopes**, each an independent `Amnesia` store. The implicit `"default"` scope exists; named scopes are created lazily on first reference.
+- `useAmnesia()` (no arg) tracks the currently active scope and re-renders when active changes. `useAmnesia("canvas")` pins to a named scope.
+- `useUndoableState(initial, { scopeId })` and `usePersistedUndoableState(...)` pin to a named scope (default `"default"`); they do **not** float to the active claim.
+- `useAmnesiaFocusClaim(scopeId)` returns capture-phase focus / pointer-down handlers that mark a surface as the active claimant. The handlers go on a focusable container element.
+- At most one focused-child claim is held at a time. The most recently claimed scope wins; on claim-component unmount, the active falls back to default if the unmounting component held the claim.
+- `<AmnesiaShortcuts />` routes Ctrl+Z / Cmd+Z to the active scope by default. Pin with `<AmnesiaShortcuts scopeId="canvas" />` to ignore claim changes.
+- `<AmnesiaShortcuts />` calls `event.preventDefault()` whenever the chord matches outside an editable target — even when there is nothing to undo. This is required because async `undo` / `redo` cannot synchronously decide whether the browser's native handler should run.
+- Per-scope option overrides go on the provider: `<AmnesiaProvider scopes={{ canvas: { capacity: 1000 } }}>`. Settings are read at scope-creation time (lazy).
+- `useAmnesiaScopes()` returns `{ activeScopeId, scopeIds, clear(scopeId?) }` for provider-level UI (breadcrumbs, document-switch reset). `clear()` with no arg clears every scope; `clear("canvas")` clears one.
+- The undo stack is **in-memory only**. Closures are not serialized and the history does not survive a reload.
+- To survive reloads, persist the underlying value (e.g. via `react-mnemonic`) and let the history start fresh per session.
+- `Command.redo` and `Command.undo` may be synchronous or return `Promise<void>`. `push` / `undo` / `redo` always return `Promise<number | null>`.
+- `push({ redo, undo, label })` calls `redo()` once on insertion. Pass `{ applied: true }` when the call site has already mutated state.
+- `Command.do` is optional. When supplied, it runs once at push time instead of `redo` and is **not stored** on the entry — every subsequent redo invokes `command.redo`. Use `do` when first-apply requires setup that re-apply does not.
+- `useAmnesia(scopeId?).transaction(label?, work)` collapses N pushes into one composite entry. `tx.push(command)` runs `command.do ?? command.redo` immediately and buffers `command.redo` / `command.undo`. On commit the past stack gains exactly one composite entry whose redo/undo replay all buffered handlers in order / reverse order.
+- A throw inside a transaction's `work` rolls back every buffered undo in reverse and re-throws to the caller. `clear()` / `dispose()` during the await stales the transaction and rolls back instead. Empty transactions resolve to `null` with no entry.
+- Nested `transaction(...)` calls flatten into the outermost; the nested `label` argument is ignored, the outermost label or any `tx.label(...)` call wins.
+- Composite entries never coalesce with stack neighbors. Inside a transaction, individual `tx.push` calls do not coalesce with each other either.
+- Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are provider-level options. They fire once per logical action — coalesce-merges and rollback-due-to-throw do not fire `onPush`. A transaction commit fires exactly one `onPush` for the composite entry.
+- Hook payloads carry `(entry, scopeId)`; `onClear` carries `(scopeId)`. Hooks fire after subscribers have been notified, so handlers see a quiescent store and may safely re-enter `push` / `undo` / `redo`. A throwing hook is caught and ignored.
+- `metaTransform: (meta) => meta | undefined` redacts `meta` before it reaches the snapshot or any hook. Use this to strip secrets / PII without forcing every call site to remember the rule. Returning `undefined` strips meta entirely; a throwing transform also strips it.
+- `useUndoableState` returns `[value, set, reset]`. `reset()` restores the value captured on first render and clears the bound scope's history. `reset(next)` overrides with a specific value. Reset is **not undoable** — the scope is wiped.
+- `usePersistedUndoableState` returns `{ value, set, reset, remove }`. `reset(next?)` is composite: it clears the history scope AND restores the persisted value via `react-mnemonic` (calling `mnemonic.reset()` with no arg, `mnemonic.set(next)` otherwise). `remove()` deletes the persisted key AND clears the history scope.
+- `reset` and `remove` clear the **entire scope** the hook is bound to — including entries from sibling hooks or imperative pushes that share the same scope. Pin sensitive history to its own `scopeId` when that boundary matters.
+- `<AmnesiaProvider enableDevTools devToolsId="my-app">` registers the provider with `window.__REACT_AMNESIA_DEVTOOLS__`. The registry is opt-in and lazy-installed: when no provider sets `enableDevTools`, no global is created.
+- The devtools api exposes `id`, `getActiveScopeId()`, `scopes()`, `getSnapshot(scopeId?)`, `pastSnapshot(scopeId?)`, `futureSnapshot(scopeId?)`, `dump()`, `triggerUndo(scopeId?)`, `triggerRedo(scopeId?)`, and `clear(scopeId?)`. External tooling and AI agents can introspect or drive a live store without touching application code.
+- Provider entries are held weakly via `WeakRef` when available, so a long-lived registry never prevents an unmounted provider from being garbage-collected.
+- Every command handler (`do` / `redo` / `undo`) and every transaction `work` function receives an `AbortSignal` argument. The signal aborts when `clear()` or `dispose()` runs while the handler is in flight. Pass it to `fetch` (which cancels the network call) or check `signal.aborted` in long loops. A rejection thrown after `signal.aborted === true` is treated as a silent no-op — no `onError` event fires and the entry is dropped.
+- Handlers that ignore the signal still drop the commit via the existing epoch check; the difference is that `onError({ phase: "stale" })` fires for ignored signals and stays silent for honored ones.
+- Each operation gets its own `AbortController` — sibling ops don't share signals. Nested transactions DO share the outer transaction's signal, so cancellation propagates through the whole flattened buffer.
+- A new `push` clears the redo (future) stack. There is no branching in v0.
+- Use `coalesceKey` (e.g. `"edit:title"`) for keystroke or drag bursts so a single Ctrl+Z reverts the whole burst. Coalescing across async commands is fragile — recommend against it.
+- Two pushes coalesce only when they share the same non-empty `coalesceKey` and arrive within `coalesceWindowMs` of each other.
+- Capacity defaults to `100`. When the limit is reached, the oldest past entry is dropped silently — do not rely on history for audit trails.
+- `clear()` is synchronous. It drops both stacks, bumps the `epoch` counter, empties the pending set, and notifies subscribers once.
+- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles `<input>`, `<textarea>`, `<select>`, and `contenteditable` regions. The check walks `event.composedPath()` so editables inside open shadow roots (Lit / web components) are also recognized.
+- `<AmnesiaShortcuts />` ignores chords with `event.defaultPrevented === true` (an upstream handler already claimed it) and ignores `Alt`-modified chords (`Ctrl+Alt+Z` is not Undo).
+- `target` accepts `HTMLElement | Document | Window | "document" | "window" | null`. The string forms are SSR-safe — they resolve at handler-attach time inside `useEffect`, not at module load.
+- The store is single-flight. Concurrent `push` / `undo` / `redo` while one is pending resolve to `null` and fire `onError({ phase: "busy" })`.
+- An async op whose `await` outlasts a `clear()` resolves to `null` and fires `onError({ phase: "stale" })`. State has already been cleared.
+- A throwing `redo()` / `undo()` leaves the entry in place and fires `onError({ phase: "undo" | "redo", recoverable: true })`. The application is responsible for retry or recovery.
+- `onError` invocations are deferred until the pending set is empty so handlers may safely re-enter the store.
+- `AmnesiaProvider` does not auto-dispose on unmount (it would conflict with React 18 StrictMode). Call `store.dispose()` yourself when sharing a store with non-React code.
+- Do not put authentication tokens, refresh tokens, session IDs, or other secrets into command `meta` — snapshots are exposed to descendant components and devtools.
+- Consumer code should import published values and types from `react-amnesia`, not internal paths or local ambient shims.
+- Import from `react-amnesia/core` when persistence is not needed; that entrypoint does not require `react-mnemonic`.
+
+## Decision Checklist
+
+Before adding a new history entry or making state reversible, answer these
+questions explicitly:
+
+1. Should this state be reversible from the keyboard, or is it transient UI state where CMD|Ctrl+Z would be surprising?
+2. Should rapid bursts collapse into a single undo? If yes, give them a shared `coalesceKey`.
+3. Does the change need to survive reloads? If yes, layer `usePersistedUndoableState` (or use `useMnemonicKey` directly and push commands manually).
+4. Can the inverse be expressed cheaply? If `undo()` would require recomputing or re-fetching, capture the previous value at the call site instead of recomputing it inside the closure.
+5. Is this entry safe to drop? With the default `capacity: 100`, the oldest entries are silently discarded — anything that must be reversible forever should be modeled differently (e.g. an audit log).
+
+## Canonical Retrieval Surfaces
+
+These AI-oriented surfaces are intentionally layered:
+
+- `/docs/ai/*` is the canonical prose source.
+- `AGENTS.md`, `CLAUDE.md`, `.claude/rules/*`, `.cursor/rules/*`, `.github/copilot-instructions.md`, and `.github/instructions/*` are generated instruction-pack projections over the same canonical source.
+
+## What To Read In Code
+
+When prose is not enough, these source files define the runtime contract:
+
+- [`src/Amnesia/history.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/history.ts) for the framework-agnostic store, capacity rules, and coalescing
+- [`src/Amnesia/provider.tsx`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/provider.tsx) for context wiring
+- [`src/Amnesia/use.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/use.ts) and [`use-undoable-state.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/use-undoable-state.ts) for hook semantics
+- [`src/Amnesia/shortcuts.tsx`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/shortcuts.tsx) for the keyboard binding contract
+- [`src/Amnesia/types.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/types.ts) for public types
+- [`src/mnemonic.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/mnemonic.ts) for the optional persistence bridge
+- [`src/index.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/index.ts) for the published public surface
+
+## High-Risk Areas
+
+These are the places where agents are most likely to be "almost right" while
+still shipping incorrect undo behavior:
+
+- expecting the undo stack itself to survive a page reload
+- replaying old commands against new application state without checking that the inverse is still meaningful
+- pushing commands inside a render path instead of an event handler or effect
+- swallowing the browser's native undo by binding shortcuts globally without `skipEditableTargets`
+- forgetting that a new `push` clears the redo stack, so "undo, edit, redo" is not a no-op
+- using `clear()` as a substitute for `undo()` and losing legitimately reversible work
+- relying on capacity-bounded history as an audit trail
+- storing closures that capture stale React state across renders without using a ref
+
+If the task involves any of those areas, go straight to the linked AI pages
+instead of extrapolating from a single example.
+
+## Invariants
+Source: https://thirtytwobits.github.io/react-amnesia/docs/ai/invariants
+
+# Invariants
+
+This page is the shortest authoritative statement of what `react-amnesia`
+guarantees.
+
+## Supported React Versions
+
+- React `^18.0.0 || ^19.0.0`. The full test suite runs under React 18.3 and React 19.2.
+- Component tests are wrapped in `<StrictMode>` by default, so every component path exercises React's dev double-mount cycle.
+- `AmnesiaProvider` does not auto-dispose its store on unmount. This is intentional: auto-dispose conflicts with StrictMode's simulated effect cleanup. Call `store.dispose()` manually when sharing a store with non-React code.
+
+## Core Runtime Invariants
+
+- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- The history store is in-memory only. Closures are never serialized and the stack does not survive a reload.
+- `Command.redo` and `Command.undo` are required and may be synchronous or return a `Promise<void>`.
+- `Command.do` is optional. When present, it runs once at push time instead of `redo`; it is consumed there and never stored on the entry.
+- `push` / `undo` / `redo` always return `Promise<number | null>`. Synchronous handlers resolve in the same microtask with no observable `pending: true` window.
+- `push(command)` invokes `command.do ?? command.redo` exactly once on insertion unless `{ applied: true }` is passed.
+- `push(...)` always clears the future (redo) stack. No branching is supported in v0.
+- `undo()` pops the most recent past entry, calls its `undo()`, and pushes it onto the future stack. Resolves to the entry id, or `null` when the past stack is empty.
+- `redo()` pops the most recent future entry, calls its `redo()`, and pushes it onto the past stack. Resolves to the entry id, or `null` when the future stack is empty.
+- `clear()` is synchronous. It drops both stacks, bumps `epoch`, empties the pending set, and notifies subscribers exactly once.
+- `dispose()` is synchronous and idempotent. It bumps `epoch`, clears state, and disconnects listeners. `AmnesiaProvider` does **not** call it automatically — consumers who share a store with non-React code may invoke it themselves.
+- Snapshots are referentially stable until the next mutation. `getSnapshot()` returns the same reference for identical state.
+- Snapshots and their `past` and `future` arrays are frozen with `Object.freeze`. Consumers cannot mutate them.
+- Synchronous mutations notify subscribers exactly once. Asynchronous mutations notify twice: once when the await begins (`pending: true`) and once on commit (`pending: false`). A stale-dropped op (epoch mismatch) does not notify; `clear()` already did.
+- The listener list is snapshotted before dispatch, so callbacks added or removed during a notify cycle do not affect the current tick.
+- Capacity defaults to `100` and is clamped to a minimum of `1`. When exceeded, the oldest past entry is dropped silently on the next push. Eviction happens at commit, not at schedule.
+- `coalesceWindowMs` defaults to `400` and is clamped to a minimum of `0`. Coalescing timestamps are taken at commit. Coalescing across async commands is supported but fragile — recommend against it.
+- Two consecutive pushes coalesce when they share the same non-empty `coalesceKey` and the second arrives within `coalesceWindowMs` of the first. The merged entry keeps the earlier `undo` and the latest `redo` so a single undo reverts the whole burst. Each push's `do` is invoked at its own push time; the merged entry never stores a `do`.
+- A throwing `redo()` or `undo()` leaves the entry in place and surfaces via `onError({ phase: "undo" | "redo", recoverable: true })`. The application is responsible for retry or recovery.
+- Concurrent operations while `pending === true` resolve to `null` and surface as `onError({ phase: "busy" })`. The store is single-flight.
+- An async op whose `await` outlasts a `clear()` or `dispose()` resolves to `null` and surfaces as `onError({ phase: "stale" })`. State has already been cleared by the racing call.
+- `onError` invocations are deferred until `pendingTokens` is empty so a handler that calls `push` / `undo` / `redo` re-entrantly always sees a quiescent store.
+- The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
+- Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
+
+## Cancellation (AbortSignal)
+
+- Every `Command` handler (`do`, `redo`, `undo`) and every `transaction` `work` function receives an `AbortSignal` as its (first / second) argument.
+- One `AbortController` is created per operation. The signal is **aborted** when `clear()` or `dispose()` runs on that scope while the operation is in flight.
+- Sibling operations on the same scope don't share signals; each gets its own controller.
+- Nested transactions share the outer transaction's signal — they flatten into the same buffer, so a single cancellation propagates through nested work.
+- Synchronous handlers receive a signal too, but it is never aborted before they return.
+- Handler treatment of cancellation:
+    - **Honored**: handler observes `signal.aborted` and rejects (any error). The op resolves to `null`, no entry is committed, no `onError` fires. This is the silent path.
+    - **Ignored**: handler completes normally despite the abort. The epoch check still drops the commit, and `onError({ phase: "stale", recoverable: false })` fires.
+    - **Real failure** (signal not aborted): handler throws. Same behavior as before — `onError` with the appropriate phase, `push` rejects to caller, `undo` / `redo` leave the entry in place.
+- Transaction rollback uses a fresh `AbortSignal` (the original was already aborted), so buffered undos can do their own cleanup work even during a cancellation.
+- The composite entry's `redo` and `undo` (built from a transaction) propagate their caller's signal to every buffered handler in the order they were pushed (redo) or reverse order (undo).
+
+## DevTools Registry
+
+- `<AmnesiaProvider enableDevTools>` lazily installs `window.__REACT_AMNESIA_DEVTOOLS__` on first mount and registers the provider's inspection api under `devToolsId` (auto-generated `amnesia-N` if omitted).
+- When no provider sets `enableDevTools`, the registry is never created — no global, no overhead.
+- Registry shape:
+    - `providers: Record<id, AmnesiaDevToolsProviderEntry>`
+    - `resolve(id) -> AmnesiaDevToolsProviderApi | null` (returns `null` for GC'd or unregistered providers)
+    - `list() -> AmnesiaDevToolsProviderDescriptor[]` (id, available, registeredAt)
+    - `capabilities -> { weakRef, finalizationRegistry }`
+    - `__meta -> { version, lastUpdated, lastChange }` (bumps on every register / unregister)
+- Provider entries are stored as `WeakRef`s when available; `deref()` returns the live api or `undefined`. A strong-reference fallback keeps the registry usable on runtimes without `WeakRef`.
+- The provider's inspection api exposes `id`, `getActiveScopeId()`, `scopes()`, `getSnapshot(scopeId?)`, `pastSnapshot(scopeId?)`, `futureSnapshot(scopeId?)`, `dump()`, `triggerUndo(scopeId?)`, `triggerRedo(scopeId?)`, `clear(scopeId?)`. Methods that take an optional `scopeId` resolve to the active scope when omitted.
+- Triggers (`triggerUndo`, `triggerRedo`) are async and obey the same single-flight / busy / stale rules as direct store calls.
+- The provider's `useEffect` re-registers under the same id across StrictMode's simulated cleanup-then-setup cycle. External listeners may observe a brief gap; `__meta.version` records each transition.
+
+## Reset Semantics
+
+- `useUndoableState` returns `[value, set, reset]`. The reset reference is stable across renders.
+- `reset(next?)` resolves the new value as: `next` (or `next()` for a factory) when supplied, otherwise the value captured on first render. Strict-mode double-invocation does not change the captured initial — it is set once via `useState`'s initializer contract.
+- `reset` calls `store.clear()` on the bound scope FIRST, then writes the resolved value. The clear bumps `epoch` so any in-flight async op stales out cleanly; the rewrite lands in the same microtask.
+- `reset` does not push an entry. It is intentionally not undoable — the wipe is the point.
+- `useUndoableState` clears the **entire scope**, not just the value owned by this hook. Sibling hooks and imperative `useAmnesia(scopeId).push(...)` calls in the same scope are also dropped.
+- `usePersistedUndoableState`'s `reset(next?)` is composite: scope clear THEN either `mnemonic.reset()` (no arg) or `mnemonic.set(next)` (with arg). The persistence layer's defaultValue is whatever was passed to `useMnemonicKey`.
+- `usePersistedUndoableState`'s `remove()` is composite: scope clear THEN `mnemonic.remove()` (deletes the key from storage; subsequent reads return `defaultValue`).
+
+## Lifecycle Hooks
+
+- Provider options accept `onPush(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
+- The store-level shape (`AmnesiaStoreOptions`) takes the scopeId-free form: `onPush(entry)`, `onUndo(entry)`, `onRedo(entry)`, `onClear()`. The provider api binds scopeId before forwarding.
+- Hook events are queued during a mutation and dispatched from `notify()` after subscribers fire. They never run before the snapshot is updated.
+- A re-entrancy guard prevents a hook that calls `push` / `undo` / `redo` from causing nested drains: the inner mutation queues its own hook event, and the outer drain picks it up.
+- `onPush` fires exactly once per logical user action: never on coalesce-merge, never on rollback, exactly once per transaction commit.
+- `onClear` fires only when `clear()` actually mutated state. Empty/no-op clears do not fire. Provider-level `clear()` (no arg) fires `onClear` once for each scope that was non-empty.
+- A hook that throws is caught and ignored; the rest of the queue still drains. `metaTransform` failures also do not poison the store — the failing entry's `meta` is stripped before the hook sees it.
+- `metaTransform(meta)` runs every time `meta` is exposed: in the public snapshot's `past` / `future` entries AND in hook payloads. Returning `undefined` strips `meta` from the public form.
+
+## Transactions
+
+- `transaction(label?, work)` is per-scope. The store is single-flight while the transaction runs; concurrent `push` / `undo` / `redo` from outside the work function hit `phase: "busy"` and resolve to `null`.
+- `tx.push(command)` invokes `command.do ?? command.redo` synchronously (or awaits if it returns a Promise) and appends `command.redo` and `command.undo` to the buffer. The composite entry stores `redo` (not `do`) for replay.
+- The composite's `redo` runs every buffered `redo` in original order; its `undo` runs every buffered `undo` in **reverse** order. Both await async handlers.
+- Sync `work` commits with a single notify (no observable `pending: true`). Async `work` notifies twice: at await-start and at commit / rollback / stale-resolution.
+- A synchronous throw from `work` rolls back synchronously then re-throws. An asynchronous rejection rolls back asynchronously then re-throws. `clear()` / `dispose()` during the await rolls back and resolves to `null` with `phase: "stale"`.
+- Per-buffered-undo failures during rollback fire `phase: "rollback"` errors, one per failure. The original `work` rejection (when applicable) still propagates to the caller.
+- `tx.push` and `tx.label` throw synchronously when called after the surrounding `transaction(...)` resolves.
+- Nested `transaction(...)` calls flatten: the inner call's `label` is ignored, its `work` runs against the outer's buffer, and it resolves to `null` immediately when its own work completes. There is no separate nested commit.
+- The composite entry's `coalesceKey` is undefined; it never coalesces with neighbors. Individual `tx.push` calls do not coalesce within the buffer either.
+- `transaction(...)` on a disposed store resolves to `null` without invoking `work`.
+- `transaction(label)` with no `work` function rejects synchronously with a `TypeError`.
+
+## Multi-Scope Routing
+
+- A provider owns a `Map<scopeId, Amnesia>`. Named scopes are created lazily on first reference. The reserved `"default"` scope is created on first reference like any other.
+- Scopes are isolated: each has its own past, future, version, epoch, pending set, capacity, and coalesce window. Cross-scope undo / redo is not possible.
+- The provider tracks at most one **focused-child claim** at a time. `claim(scopeId)` sets it; `claim("default")` clears it; `release(scopeId)` clears it only if `scopeId` currently holds it.
+- The active scope is `claim ?? "default"`. `getActiveScopeId()` reads it; `subscribeActive(listener)` notifies on every change.
+- Per-scope option overrides on the provider's `scopes` prop are read at scope-creation time and frozen thereafter. Updating the prop after a scope exists has no effect.
+- `useUndoableState` and `usePersistedUndoableState` pin to an explicit `scopeId` (default `"default"`). They do not track the active claim — React state lives in stable component instances and should not migrate scopes when focus moves.
+- `useAmnesia(scopeId?)` does the opposite: with no arg it tracks the active claim; with an arg it pins.
+- `<AmnesiaShortcuts />` resolves the target scope at handler time so live focus claims always route the chord without a re-render. `<AmnesiaShortcuts scopeId="..." />` pins.
+- `useAmnesiaFocusClaim(scopeId)` returns capture-phase focus / pointer-down handlers. On the component's unmount it releases its claim if it was active.
+- `clear(scopeId?)` on the provider api (and `useAmnesiaScopes().clear`) iterates every registered scope when called with no argument. With a `scopeId` argument it clears only that scope (lazily creating it if needed). The per-scope store's own `clear()` (e.g. via `useAmnesia(scopeId).clear()`) clears just its own stacks and takes no argument.
+
+## Type Sourcing Rules
+
+- Import values from `react-amnesia` (or `react-amnesia/core` / `react-amnesia/mnemonic`), not internal package paths.
+- Import exported types from `react-amnesia` with `import type`.
+- Do not create local `react-amnesia.d.ts` files.
+- Do not write `declare module "react-amnesia"` in consumer code.
+- If a type seems missing, check `src/index.ts`, `src/core.ts`, `src/mnemonic.ts`, `package.json`, and the API docs before inventing a replacement contract.
+
+## Exact Push Lifecycle
+
+`push(command, options?)` follows this order:
+
+1. If the store is disposed, resolve to `null`.
+2. If `pendingTokens` is non-empty (another op is in flight), schedule `onError({ phase: "busy" })` and resolve to `null`.
+3. If `options.applied` is not `true`, invoke `command.do ?? command.redo`. A synchronous throw is scheduled as `onError({ phase: "push" })` and re-thrown to the caller; the entry is not added.
+4. If the invoked handler returned a Promise, notify subscribers (so `pending: true` is observable), then `await` it. A rejection schedules `onError({ phase: "push" })` and re-throws.
+5. After resume, if the store's `epoch` has changed (a `clear()` or `dispose()` raced the await), schedule `onError({ phase: "stale" })` and resolve to `null` without committing.
+6. Read the most recent past entry. If it shares a non-empty `coalesceKey` with the new command and the elapsed wall-clock time at commit is within `coalesceWindowMs`, replace it with a merged entry (latest `redo`, original `undo`, latest label / coalesceKey / meta) and clear the future stack.
+7. Otherwise, append a new entry with a fresh monotonic id. If the past stack now exceeds `capacity`, drop the oldest entry. Clear the future stack.
+8. Increment `version`, remove the pending token, rebuild the frozen snapshot, and notify subscribers. Drain any deferred `onError` calls now that `pendingTokens` is empty.
+
+## Exact Undo / Redo Lifecycle
+
+`undo()` follows this order:
+
+1. If the store is disposed, resolve to `null`.
+2. If `pendingTokens` is non-empty, schedule `onError({ phase: "busy" })` and resolve to `null`.
+3. Read the last past entry. If none exists, resolve to `null` without notifying.
+4. Call the entry's `undo()`. If it returned a Promise, notify (`pending: true`), then `await`.
+5. A throw schedules `onError({ phase: "undo", recoverable: true })`, leaves the entry in place, and resolves to `null`.
+6. After resume, if `epoch` changed, schedule `onError({ phase: "stale" })` and resolve to `null`.
+7. On success, pop the entry from past and append it to future. Increment `version`, remove the pending token, rebuild the snapshot, and notify subscribers. Drain any deferred `onError` calls.
+
+`redo()` follows the symmetric order against the future stack with `phase: "redo"`.
+
+## Keyboard Shortcut Boundaries
+
+`<AmnesiaShortcuts />` is the only built-in keyboard binding. Its contract is:
+
+- Mounts a `keydown` listener on `target`. Defaults to `window`. Accepts an `HTMLElement | Document | Window | "document" | "window" | null`. The string forms `"document"` / `"window"` resolve inside `useEffect`, so they are SSR-safe. `target === null` attaches no listener.
+- Bindings: `Ctrl+Z` / `Cmd+Z` for undo; `Ctrl+Shift+Z`, `Cmd+Shift+Z`, and `Ctrl+Y` for redo.
+- Ignores any keydown whose `event.defaultPrevented === true` — an upstream handler has already claimed the chord.
+- Ignores any keydown with `event.altKey === true`. Alt-modified chords are intentionally separate from Undo / Redo.
+- When `skipEditableTargets` is `true` (default), chords are ignored when `event.composedPath()` contains an `<input>`, `<textarea>`, `<select>`, or `contenteditable` element. The composed-path walk is **shadow-DOM transparent**: editables inside open shadow roots are recognized even though `event.target` has been retargeted to the host. Falls back to `event.target` only when `composedPath` is unavailable.
+- When `preventDefault` is `true` (default), `event.preventDefault()` is called whenever the chord matches and shortcuts are not skipped — regardless of whether an entry exists to undo / redo. This is required because async `undo` / `redo` cannot synchronously decide whether to suppress the browser's native chord.
+- When `enabled` is `false`, the listener is detached. Toggle this rather than unmounting the component if a modal needs to own the chord temporarily.
+
+## Persistence Bridge Boundaries
+
+The optional `react-amnesia/mnemonic` entrypoint is a thin layer over both
+libraries. Its contract is:
+
+- `usePersistedUndoableState(key, options)` calls `useMnemonicKey<T>(key, mnemonicOptions)` for the value path and pushes one command per change for the history path.
+- `set(...)` always writes through the `react-mnemonic` setter and then pushes a command with `{ applied: true }`.
+- `reset()` and `remove()` from the returned object pass straight through to `react-mnemonic` and **bypass the undo stack**. Wrap them with `useAmnesia().push(...)` if your app needs them reversible.
+- The undo stack itself is not persisted. On reload the value is recovered from `react-mnemonic` and the history starts empty.
+
+## Source Files
+
+- [`src/Amnesia/history.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/history.ts)
+- [`src/Amnesia/provider.tsx`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/provider.tsx)
+- [`src/Amnesia/use.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/use.ts)
+- [`src/Amnesia/use-undoable-state.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/use-undoable-state.ts)
+- [`src/Amnesia/shortcuts.tsx`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/shortcuts.tsx)
+- [`src/Amnesia/types.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/Amnesia/types.ts)
+- [`src/mnemonic.ts`](https://github.com/thirtytwobits/react-amnesia/blob/main/src/mnemonic.ts)
+
+## Decision Matrix
+Source: https://thirtytwobits.github.io/react-amnesia/docs/ai/decision-matrix
+
+# Decision Matrix
+
+Use these tables when the code is "almost obvious" but one wrong undo choice
+would change user behavior after a Ctrl+Z.
+
+## Single Scope vs Multi-Scope
+
+| Need                                                                          | Approach                                                                      |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Whole-app undo on a single document                                           | One `<AmnesiaProvider>`, default scope only — no `scopeId` anywhere needed    |
+| Authoring app with several long-lived surfaces (canvas, property panel, etc.) | One `<AmnesiaProvider>` with named scopes; `useAmnesiaFocusClaim` per surface |
+| Multiple documents open in tabs, each with its own history                    | One `<AmnesiaProvider key={documentId}>` per document; remount on switch      |
+| Undoable component library distributed independently                          | Default scope is fine; consumer apps wrap in their own provider               |
+| Modal / overlay that should temporarily steal Ctrl+Z                          | Mount its content with `useAmnesiaFocusClaim("modal")`; release on close      |
+
+## Pin to a Scope vs Track the Active Scope
+
+| Need                                                                          | Hook                                                               |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Component is logically tied to one surface (canvas toolbar, props breadcrumb) | `useAmnesia("canvas")` — pinned                                    |
+| Component reflects "whatever the user is editing right now"                   | `useAmnesia()` — tracks active                                     |
+| `useUndoableState` for a value that lives in a component                      | `{ scopeId: "..." }` — always pinned                               |
+| Keyboard shortcut binding for the whole window                                | `<AmnesiaShortcuts />` — tracks active                             |
+| Region-scoped shortcut binding (canvas keyboard ops only)                     | `<AmnesiaShortcuts scopeId="canvas" target={canvasRef.current} />` |
+| Reading the active scope id for breadcrumbs                                   | `useAmnesiaScopes().activeScopeId`                                 |
+
+## `useUndoableState` vs `push` vs `useAmnesia`
+
+| Need                                                          | API                                 | Why                                                                   |
+| ------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| Single reversible value, replaces a `useState`                | `useUndoableState(initial, opts)`   | Smallest call site; the hook owns redo and undo closures              |
+| Mutating something the hook can't own (lists, graphs, canvas) | `useAmnesia().push({ redo, undo })` | Full control over the inverse; pass `{ applied: true }` after mutate  |
+| Reading the stack for UI (history list, breadcrumb, badges)   | `useAmnesia()` snapshot             | Already memo-stable; no need to subscribe manually                    |
+| Direct programmatic undo / redo (toolbar buttons, menu items) | `useAmnesia().undo()` / `.redo()`   | Resolves to the affected entry id, or `null` when the stack was empty |
+
+## DevTools Registry vs Lifecycle Hooks vs Subscribers
+
+| Need                                                   | Approach                                                 |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| External tool / browser extension reads live state     | `<AmnesiaProvider enableDevTools devToolsId="…">`        |
+| AI agent introspects history without touching app code | DevTools registry — `resolve(id)` then call api          |
+| Drive `undo` / `redo` from a debugging UI              | DevTools `triggerUndo` / `triggerRedo`                   |
+| Telemetry on every push / undo / redo / clear          | Provider hooks (`onPush`, `onUndo`, `onRedo`, `onClear`) |
+| React component renders state                          | `useAmnesia()` snapshot — subscribers, not hooks         |
+| Per-scope analytics                                    | Per-scope hook in `scopes={{ canvas: { onPush } }}`      |
+| Forward errors                                         | `onError`                                                |
+| Redact secrets / PII before they leave the store       | `metaTransform`                                          |
+| Need synchronous side effect at mutation time          | NOT a hook — wrap the mutation; hooks are post-notify    |
+
+## Lifecycle Hooks vs Subscribers
+
+| Need                                                      | Approach                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------- |
+| Telemetry (analytics, audit log)                          | Provider-level `onPush` / `onUndo` / `onRedo` / `onClear` |
+| Driving UI state ("how many entries on the stack?")       | `useAmnesia()` snapshot — subscribers, not hooks          |
+| Per-scope analytics with different fields per surface     | Per-scope override in `scopes={{ canvas: { onPush } }}`   |
+| Forward errors to a tracker                               | `onError` (existing) — not a lifecycle hook               |
+| Redact secrets / PII before they leave the store          | `metaTransform`                                           |
+| Need to fire side effects synchronously with the mutation | NOT a hook — wrap the mutation; hooks are post-notify     |
+
+## Reset / Discard / Remove
+
+| Need                                                                      | API                                           |
+| ------------------------------------------------------------------------- | --------------------------------------------- |
+| "Discard changes" button (snap back to a stable starting value)           | `useUndoableState`'s `reset()`                |
+| "Load preset" or "load template" (set a specific value, drop history)     | `useUndoableState`'s `reset(preset)`          |
+| Lazily compute the discard-target value at click time                     | `useUndoableState`'s `reset(() => compute())` |
+| Whole-scope reset triggered from elsewhere (toolbar button, route change) | `useAmnesiaScopes().clear(scopeId)`           |
+| Clear every scope (document switch, logout)                               | `useAmnesiaScopes().clear()` (no arg)         |
+| Restore persisted defaultValue and wipe history                           | `usePersistedUndoableState().reset()`         |
+| Set a specific persisted value and wipe history                           | `usePersistedUndoableState().reset(value)`    |
+| Delete persisted key entirely (next read = defaultValue) and wipe history | `usePersistedUndoableState().remove()`        |
+
+## `transaction` vs Many `push`es
+
+| Need                                                                        | Approach                                                       |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| One user action mutates several places; one Ctrl+Z should undo all of them  | `useAmnesia().transaction("Apply preset", ...)`                |
+| Each mutation should remain individually undoable                           | Several `push(...)` calls                                      |
+| Multi-step async work (call API, then update UI, then write to disk) atomic | `transaction(async (tx) => { ... })`                           |
+| Handlers might fail; want all-or-nothing                                    | `transaction` — rollback runs on throw                         |
+| Want a "dry-run, then commit if happy" pattern                              | `transaction` and throw to abort                               |
+| Just one mutation                                                           | Plain `push` — transaction would only add notify-pair overhead |
+
+## `Command.do` vs `redo`-only
+
+| Situation                                                                                                                                 | Recommendation                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| First-apply and re-apply share identical closures (the common case)                                                                       | Omit `do`; rely on `redo` only                                                                       |
+| First-apply mutates state in-place; re-apply restores by reference (e.g. inserting a freshly-created node vs. re-inserting it after undo) | Define both `do` and `redo`                                                                          |
+| Caller already mutated state and just wants to record the inverse                                                                         | `push(cmd, { applied: true })`; `do` is skipped                                                      |
+| Need different telemetry on first-apply vs replay                                                                                         | `do` for the original, `redo` for replays                                                            |
+| Want to coalesce a burst into one entry                                                                                                   | `coalesceKey`; each push's `do` runs at its own push time, the merged entry stores the latest `redo` |
+
+## Cancellation Strategy
+
+| Scenario                                                          | What you do                                                          |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Handler does an HTTP call                                         | `fetch(url, { signal })` — auto-cancels on `clear()` / `dispose()`   |
+| Handler runs a long synchronous loop                              | `if (signal.aborted) return` (or throw) at the top of each iteration |
+| Handler is sync and fast                                          | Ignore the signal — it can't abort before the function returns       |
+| You want a clean cancellation (no error log)                      | Throw an `AbortError`-shaped error after observing `signal.aborted`  |
+| You want the existing stale-drop behavior with an `onError` event | Ignore the signal entirely; the epoch check still drops the commit   |
+| Transaction needs to cancel a multi-step network workflow         | Pass the work-fn's `signal` to every `fetch` and to nested commands  |
+| Two ops should share cancellation                                 | Wrap them in one `transaction` — the work-fn's signal covers both    |
+
+## Sync vs Async Command Handlers
+
+| Need                                                                | Recommendation                                                                                      |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Mutating local component state (the common case)                    | Sync `redo` / `undo`; subscribers see one notify per mutation                                       |
+| Calling a server before committing (theme apply, server URL change) | Async `redo` / `undo`; subscribers see `pending: true` during await                                 |
+| `useUndoableState` setter                                           | Stays sync-feeling — internal handlers are sync, no `pending` window                                |
+| Need to coalesce rapid bursts                                       | Sync handlers — coalescing across async commands is fragile                                         |
+| Mid-command another `push` arrives                                  | Second call resolves to `null`, fires `onError({ phase: "busy" })`                                  |
+| `clear()` runs while an async command is awaiting                   | Command resolves to `null`, fires `onError({ phase: "stale" })`                                     |
+| In-flight async command's own `redo` rejects                        | Promise rejects to caller; `onError({ phase: "push" })`; entry not added                            |
+| `undo` / `redo` handler throws (sync or async)                      | Resolves to `null`; entry stays in place; `onError({ phase: "undo" \| "redo", recoverable: true })` |
+
+## `coalesceKey` vs Separate Entries
+
+| Situation                                               | Recommendation                          | Why                                                          |
+| ------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| Each keystroke in a text field                          | Shared `coalesceKey: "edit:<field>"`    | A single Ctrl+Z reverts the whole burst                      |
+| Slider drag updating a value 60 times per second        | Shared `coalesceKey: "drag:<control>"`  | Otherwise capacity is consumed by intermediate frames        |
+| Discrete clicks (Add item, Delete item)                 | No `coalesceKey`                        | Each action should be reversible on its own                  |
+| Distinct fields edited in alternation                   | Different `coalesceKey` per field       | Coalescing is keyed; bursts on field A do not absorb field B |
+| Pause longer than `coalesceWindowMs` between keystrokes | Same `coalesceKey` but separate entries | Time-based gap signals a logical pause                       |
+
+## Capacity Choice
+
+| Use case                                             | Recommended `capacity`             |
+| ---------------------------------------------------- | ---------------------------------- |
+| Casual UI (preferences, toggles)                     | Default (`100`)                    |
+| Document editor with frequent typing and undo bursts | `300` – `1000`                     |
+| Canvas / drawing tool with high-frequency commands   | `1000`+, but rely on `coalesceKey` |
+| Audit log or compliance trail                        | Not appropriate — model separately |
+
+## Persisting Undoable State
+
+| Need                                                        | Choose                                             | Result after reload                                |
+| ----------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- |
+| Reversible only within a session                            | `useUndoableState(...)`                            | Value resets, history starts empty                 |
+| Value should survive reload, history may reset              | `usePersistedUndoableState(...)`                   | Value persists via `react-mnemonic`, history empty |
+| Value persisted, but writes should not push undo entries    | `useMnemonicKey(...)` directly                     | Persistence-only path, no undo                     |
+| Reversible bulk action that touches multiple persisted keys | `useAmnesia().push(...)` + manual `useMnemonicKey` | Caller controls the inverse for each persisted key |
+
+## `clear()` vs `undo()` All The Way Down
+
+| Need                                           | Recommendation                                   |
+| ---------------------------------------------- | ------------------------------------------------ |
+| Undo recent edit only                          | `undo()`                                         |
+| Undo to a known earlier checkpoint             | Loop `undo()` while `canUndo`                    |
+| Document switch, route change, "open new file" | `clear()` after switching state                  |
+| User pressed "Discard changes"                 | `clear()` after restoring saved state            |
+| Logout                                         | `clear()`; closures may capture user-scoped data |
+
+## Keyboard Binding Surface
+
+| Need                                           | Recommendation                                                                |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| App-wide undo / redo                           | One `<AmnesiaShortcuts />` inside the provider                                |
+| Modal that owns its own undo                   | `<AmnesiaShortcuts enabled={false} />` while the modal is open                |
+| Custom Vim-style chord (e.g. `u` and `Ctrl+R`) | Skip `<AmnesiaShortcuts />`; call `useAmnesia().undo()` from your handler     |
+| Surface-scoped undo (canvas region only)       | `<AmnesiaShortcuts target={canvasRef.current} skipEditableTargets={false} />` |
+| Native `<input>` undo should keep working      | Default — `skipEditableTargets` is `true`                                     |
+
+## Error Reporting Choice
+
+| Need                                             | Configure                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Default behavior (log via `console.error`)       | Omit `onError`                                                                  |
+| Forward to error tracker (Sentry, Datadog, etc.) | `onError={(error, ctx) => tracker.capture(error, ctx)}`                         |
+| Silence noisy expected failures                  | `onError={(error, ctx) => { if (!isExpected(error)) defaultLog(error, ctx); }}` |
+| Halt undo on first failure                       | Re-throw inside `onError` — but expect React to surface it                      |
+
+## Recipes
+Source: https://thirtytwobits.github.io/react-amnesia/docs/ai/recipes
+
+# Recipes
+
+These recipes are intentionally compact and focus on undo/redo choices that
+agents often get wrong under time pressure.
+
+## 1. Reversible Single-Value Editor
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts, useUndoableState } from "react-amnesia";
+
+function TitleEditor() {
+    const [title, setTitle] = useUndoableState("Untitled", {
+        label: "Edit title",
+        coalesceKey: "edit:title",
+    });
+
+    return <input value={title} onChange={(event) => setTitle(event.target.value)} />;
+}
+
+export function App() {
+    return (
+        <AmnesiaProvider capacity={200}>
+            <AmnesiaShortcuts />
+            <TitleEditor />
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- a piece of state has a clean replacement value
+- rapid typing should collapse into a single undo entry
+- the surrounding `<AmnesiaShortcuts />` should drive Ctrl+Z / Cmd+Z
+
+## 2. Coalesced Slider Drag
+
+```tsx
+import { useUndoableState } from "react-amnesia";
+
+export function VolumeSlider() {
+    const [volume, setVolume] = useUndoableState(50, {
+        label: "Adjust volume",
+        coalesceKey: "drag:volume",
+    });
+
+    return (
+        <input
+            type="range"
+            min={0}
+            max={100}
+            value={volume}
+            onChange={(event) => setVolume(Number(event.target.value))}
+        />
+    );
+}
+```
+
+A slider can fire dozens of changes per second. The shared `coalesceKey`
+collapses the whole drag into one history entry so a single Ctrl+Z restores
+the pre-drag value.
+
+## 3. Imperative List Mutation
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type Item = { id: string; text: string };
+
+export function AddItemButton({ list }: { list: { add: (item: Item) => void; remove: (id: string) => void } }) {
+    const { push } = useAmnesia();
+
+    return (
+        <button
+            onClick={() => {
+                const item: Item = { id: crypto.randomUUID(), text: "New item" };
+                list.add(item);
+                push(
+                    {
+                        label: "Add item",
+                        redo: () => list.add(item),
+                        undo: () => list.remove(item.id),
+                    },
+                    { applied: true },
+                );
+            }}
+        >
+            Add
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the change does not fit a single replacement value
+- the inverse depends on data captured at the call site (here: the new item id)
+- the calling code already mutated the underlying state, so `redo()` should not run on insertion
+
+## 4. Persistence-Aware Editor
+
+```tsx
+import { MnemonicProvider } from "react-mnemonic";
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import { usePersistedUndoableState } from "react-amnesia/mnemonic";
+
+function ThemePicker() {
+    const { value, set } = usePersistedUndoableState<"light" | "dark">("theme", {
+        defaultValue: "light",
+        label: "Change theme",
+    });
+
+    return (
+        <select value={value} onChange={(event) => set(event.target.value as "light" | "dark")}>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+        </select>
+    );
+}
+
+export function App() {
+    return (
+        <MnemonicProvider namespace="my-app">
+            <AmnesiaProvider>
+                <AmnesiaShortcuts />
+                <ThemePicker />
+            </AmnesiaProvider>
+        </MnemonicProvider>
+    );
+}
+```
+
+Use when:
+
+- the value should survive reload
+- changes should still be reversible while the user is on the page
+- it is acceptable for the undo history to start empty after each reload
+
+## 5. Document Switch With `clear()`
+
+```tsx
+import { useEffect } from "react";
+import { useAmnesia } from "react-amnesia";
+
+export function useDocumentReset(documentId: string) {
+    const { clear } = useAmnesia();
+
+    useEffect(() => {
+        clear();
+    }, [documentId, clear]);
+}
+```
+
+Use when the application switches between documents or workspaces. The closures
+captured by previous entries probably reference the prior document's state;
+`clear()` drops both stacks without invoking them.
+
+## 6. Modal Owns Its Own Keybindings
+
+```tsx
+import { useState } from "react";
+import { AmnesiaShortcuts } from "react-amnesia";
+
+export function ColorPickerModal({ open }: { open: boolean }) {
+    const [scopedHistory] = useState(() => [
+        /* ... */
+    ]);
+    return (
+        <>
+            <AmnesiaShortcuts enabled={!open} />
+            {open ? <ColorPickerWithItsOwnUndo history={scopedHistory} /> : null}
+        </>
+    );
+}
+```
+
+Use when a modal has its own undo semantics (e.g. a color picker with its own
+preview history) and the global shortcuts must yield while it is open.
+Toggling `enabled` is preferable to unmounting the component.
+
+## 7. Surface-Scoped Shortcut Binding
+
+```tsx
+import { useRef, type RefObject } from "react";
+import { AmnesiaShortcuts } from "react-amnesia";
+
+export function CanvasRegion() {
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+        <div ref={ref} tabIndex={0} style={{ outline: "none" }}>
+            <AmnesiaShortcuts target={ref.current} skipEditableTargets={false} />
+            {/* ...canvas... */}
+        </div>
+    );
+}
+```
+
+Use when only a specific surface should respond to undo / redo chords. Setting
+`skipEditableTargets` to `false` is appropriate here because the canvas
+region is not a native editable target.
+
+## 8. Web-Component / Shadow-DOM Editable
+
+```tsx
+import { AmnesiaShortcuts } from "react-amnesia";
+
+// A Lit / web-component editor renders an <input> inside its shadow root.
+// `<my-rich-editor>` exposes the input only inside `mode: "open"` shadow.
+export function App() {
+    return (
+        <>
+            <AmnesiaShortcuts target="document" />
+            <my-rich-editor />
+        </>
+    );
+}
+```
+
+Use when:
+
+- the app embeds web components (Lit, Stencil, FAST, custom elements) that
+  contain native editables inside their open shadow root
+- you want the browser's native undo to keep working inside those editables
+  without disabling app-level Ctrl+Z entirely
+
+`<AmnesiaShortcuts />` walks `event.composedPath()` to detect editables
+across shadow boundaries, so a chord originating in the shadow-DOM input
+is correctly skipped under the default `skipEditableTargets={true}`.
+Closed shadow roots (`mode: "closed"`) are intentionally opaque — the
+host author has chosen to hide them, and `composedPath` reflects that.
+
+## 9. Reversible Multi-Key Persisted Action (Pre-Transactions Pattern)
+
+```tsx
+import { useMnemonicKey } from "react-mnemonic";
+import { useAmnesia } from "react-amnesia";
+
+export function ApplyPresetButton({ preset }: { preset: { theme: "light" | "dark"; density: "comfy" | "compact" } }) {
+    const theme = useMnemonicKey<"light" | "dark">("theme", { defaultValue: "light" });
+    const density = useMnemonicKey<"comfy" | "compact">("density", { defaultValue: "comfy" });
+    const { push } = useAmnesia();
+
+    return (
+        <button
+            onClick={() => {
+                const previousTheme = theme.value;
+                const previousDensity = density.value;
+                theme.set(preset.theme);
+                density.set(preset.density);
+                push(
+                    {
+                        label: "Apply preset",
+                        redo: () => {
+                            theme.set(preset.theme);
+                            density.set(preset.density);
+                        },
+                        undo: () => {
+                            theme.set(previousTheme);
+                            density.set(previousDensity);
+                        },
+                    },
+                    { applied: true },
+                );
+            }}
+        >
+            Apply
+        </button>
+    );
+}
+```
+
+Use when one user action mutates several persisted keys and the inverse must
+restore them as a unit. `usePersistedUndoableState` covers single keys; this
+pattern handles compound, atomic actions.
+
+## 10. Async Command (Server-Backed Setting)
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type ServerSettings = { theme: "light" | "dark" };
+
+export function ApplyServerThemeButton({
+    next,
+    current,
+    api,
+}: {
+    next: ServerSettings["theme"];
+    current: ServerSettings["theme"];
+    api: { applyTheme: (value: ServerSettings["theme"]) => Promise<void> };
+}) {
+    const { push, pending } = useAmnesia();
+
+    return (
+        <button
+            disabled={pending}
+            onClick={async () => {
+                const id = await push({
+                    label: "Change theme",
+                    redo: () => api.applyTheme(next),
+                    undo: () => api.applyTheme(current),
+                });
+                if (id === null) {
+                    // Either another op was in flight (busy) or clear() raced
+                    // the await (stale). Either way the entry was dropped.
+                }
+            }}
+        >
+            {pending ? "Applying…" : `Switch to ${next}`}
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the inverse must talk to a server before the user can move on
+- the UI should disable affordances during the in-flight window (`pending`)
+- a concurrent click should not stack a second pending op (single-flight)
+
+The handler returning a Promise causes the store to flip `pending: true` for
+the duration of the await. Subscribers see the busy state synchronously.
+
+## 11. Divergent First-Apply With `Command.do`
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type Node = { id: string; text: string };
+
+export function InsertNodeButton({
+    list,
+    text,
+}: {
+    text: string;
+    list: { add: (node: Node) => void; restore: (id: string) => void; remove: (id: string) => void };
+}) {
+    const { push } = useAmnesia();
+
+    return (
+        <button
+            onClick={() => {
+                // First-apply mints the new node id. Redo-after-undo reuses the
+                // existing id via `restore` rather than minting a new one.
+                let mintedId: string | null = null;
+                push({
+                    label: "Insert node",
+                    do: () => {
+                        const node = { id: crypto.randomUUID(), text };
+                        mintedId = node.id;
+                        list.add(node);
+                    },
+                    redo: () => {
+                        if (mintedId) list.restore(mintedId);
+                    },
+                    undo: () => {
+                        if (mintedId) list.remove(mintedId);
+                    },
+                });
+            }}
+        >
+            Insert
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the initial application has effects that should not repeat on a redo replay
+- the inverse needs a stable identity captured at first-apply (here, `mintedId`)
+- the caller wants the entry to participate in normal redo cycles after the first apply
+
+`do` runs once at push time. Subsequent redos always invoke `command.redo`.
+
+## 12. Multi-Scope Authoring App
+
+```tsx
+import {
+    AmnesiaProvider,
+    AmnesiaShortcuts,
+    useAmnesiaFocusClaim,
+    useAmnesiaScopes,
+    useUndoableState,
+} from "react-amnesia";
+
+function CanvasArea() {
+    const claim = useAmnesiaFocusClaim("canvas");
+    const [strokes, setStrokes] = useUndoableState<string[]>([], {
+        scopeId: "canvas",
+        label: "Add stroke",
+    });
+    return (
+        <section tabIndex={-1} {...claim}>
+            <p>{strokes.length} strokes</p>
+            <button onClick={() => setStrokes((s) => [...s, "stroke"])}>Add stroke</button>
+        </section>
+    );
+}
+
+function PropertyPanel() {
+    const claim = useAmnesiaFocusClaim("props");
+    const [title, setTitle] = useUndoableState("Untitled", {
+        scopeId: "props",
+        coalesceKey: "edit:title",
+    });
+    return (
+        <aside tabIndex={-1} {...claim}>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </aside>
+    );
+}
+
+function Breadcrumb() {
+    const { activeScopeId } = useAmnesiaScopes();
+    return <span>Editing: {activeScopeId}</span>;
+}
+
+export function App() {
+    return (
+        <AmnesiaProvider scopes={{ canvas: { capacity: 1000 }, props: { capacity: 100 } }}>
+            <AmnesiaShortcuts />
+            <Breadcrumb />
+            <CanvasArea />
+            <PropertyPanel />
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- two or more long-lived authoring surfaces share one window
+- Ctrl+Z should affect whichever surface the user just touched
+- different surfaces want different capacities or coalesce settings
+- a "now editing: X" breadcrumb helps the user understand what undo will do
+
+The single `<AmnesiaShortcuts />` routes Ctrl+Z to the active scope. Each
+surface owns its own history; clicking into one shifts the active claim.
+Both `useUndoableState` calls pin to their scope so React state never moves
+between scopes when the user's focus shifts.
+
+## 13. Transaction (Multi-Step Composite Entry)
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type Document = { title: string; tags: string[]; updatedAt: number };
+type DocStore = {
+    setTitle: (next: string) => void;
+    addTag: (tag: string) => void;
+    setUpdatedAt: (ms: number) => void;
+    snapshot: () => Document;
+};
+
+export function ApplyPresetButton({ store: doc }: { store: DocStore }) {
+    const { transaction, pending } = useAmnesia();
+
+    const apply = async () => {
+        const before = doc.snapshot();
+        await transaction("Apply preset", async (tx) => {
+            await tx.push({
+                redo: () => doc.setTitle("Untitled (preset)"),
+                undo: () => doc.setTitle(before.title),
+            });
+            await tx.push({
+                redo: () => doc.addTag("preset"),
+                undo: () => doc.setTitle(before.title), // restored once via title path
+            });
+            await tx.push({
+                redo: () => doc.setUpdatedAt(Date.now()),
+                undo: () => doc.setUpdatedAt(before.updatedAt),
+            });
+        });
+    };
+
+    return (
+        <button disabled={pending} onClick={apply}>
+            Apply preset
+        </button>
+    );
+}
+```
+
+Use when:
+
+- one user-visible action touches several pieces of state
+- a single Ctrl+Z should reverse the whole bundle
+- some of the steps may be async (server calls, IndexedDB writes)
+- the user expects the action to be atomic — partial application is wrong
+
+If the `work` function throws or rejects, every buffered undo runs in
+reverse before the rejection propagates. `clear()` or `dispose()` during the
+await stales the transaction the same way.
+
+## 14. Telemetry With Lifecycle Hooks + `metaTransform`
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import { logEvent } from "./analytics";
+
+const REDACT = new Set(["authToken", "userEmail", "ssn"]);
+
+export function App({ children }: { children: React.ReactNode }) {
+    return (
+        <AmnesiaProvider
+            metaTransform={(meta) => {
+                const safe: Record<string, unknown> = {};
+                for (const key of Object.keys(meta)) {
+                    if (!REDACT.has(key)) safe[key] = meta[key];
+                }
+                return safe;
+            }}
+            onPush={(entry, scopeId) =>
+                logEvent("undo.push", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })
+            }
+            onUndo={(entry, scopeId) => logEvent("undo.undo", { scopeId, entryId: entry.id })}
+            onRedo={(entry, scopeId) => logEvent("undo.redo", { scopeId, entryId: entry.id })}
+            onClear={(scopeId) => logEvent("undo.clear", { scopeId })}
+        >
+            <AmnesiaShortcuts />
+            {children}
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- you want analytics on undo behaviour without tangling them into every push
+  call site
+- some `meta` fields are sensitive and must be redacted before leaving the
+  store
+- different scopes deserve different telemetry — pair `onPush` per-scope via
+  `scopes={{ canvas: { onPush: ... } }}`
+
+`metaTransform` runs everywhere `meta` is exposed: hook payloads AND the
+public snapshot. Telemetry handlers and history-list UI both see the
+sanitized form. A throwing transform safely strips `meta` rather than
+leaking unsanitized values.
+
+## 15. Discard-Changes With `reset`
+
+```tsx
+import { useUndoableState } from "react-amnesia";
+
+export function DraftEditor() {
+    const [draft, setDraft, resetDraft] = useUndoableState("", {
+        label: "Edit draft",
+        coalesceKey: "edit:draft",
+    });
+
+    return (
+        <div>
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} />
+            <button onClick={() => resetDraft()}>Discard changes</button>
+            <button onClick={() => resetDraft(loadServerTemplate())}>Load template</button>
+        </div>
+    );
+}
+
+function loadServerTemplate(): string {
+    return "Subject: …\n\nDear …";
+}
+```
+
+Use when:
+
+- the UI needs an explicit "throw away the work I did" button
+- "load preset" / "load template" should snap to a known starting value
+  rather than appearing in the undo stack
+- the rest of the surrounding scope's history should also be wiped (a
+  fresh-document UX)
+
+`reset()` clears the history scope synchronously and writes the new value
+in the same microtask. There is no entry to undo back to the pre-reset
+state — that is the point. If you want the discard to itself be undoable,
+push a normal command instead.
+
+## 16. Wiring DevTools For Agent / Extension Introspection
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+
+export function App({ children }: { children: React.ReactNode }) {
+    return (
+        <AmnesiaProvider enableDevTools={import.meta.env.DEV} devToolsId="my-app">
+            <AmnesiaShortcuts />
+            {children}
+        </AmnesiaProvider>
+    );
+}
+```
+
+External code can then introspect or drive the store:
+
+```ts
+const registry = window.__REACT_AMNESIA_DEVTOOLS__;
+if (registry) {
+    const probe = registry.resolve("my-app");
+    if (probe) {
+        console.table(probe.dump()); // every scope's snapshot
+        await probe.triggerUndo(); // drive an undo
+        probe.clear("draft"); // wipe a scope
+    }
+}
+```
+
+Use when:
+
+- a browser extension or external CLI needs to observe state without
+  consuming React context
+- an AI agent should be able to query "what's on the stack" without reading
+  source
+- you want a debug surface that toggles on in development and is absent in
+  production builds (gate via your bundler's env flag)
+
+The registry is **opt-in**: when no provider sets `enableDevTools`, no
+global is created. When enabled, provider entries are held weakly so the
+registry never prevents an unmounted provider from being garbage-collected.
+
+## 17. Cancellable Async Command With AbortSignal
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+export function ApplyServerThemeButton({
+    next,
+    current,
+    api,
+}: {
+    next: "light" | "dark";
+    current: "light" | "dark";
+    api: { applyTheme: (value: "light" | "dark", init?: RequestInit) => Promise<void> };
+}) {
+    const { push, pending } = useAmnesia();
+
+    return (
+        <button
+            disabled={pending}
+            onClick={async () => {
+                await push({
+                    label: "Change theme",
+                    redo: async (signal) => {
+                        // Pass the signal to fetch so a clear() / dispose()
+                        // mid-flight cancels the network call cleanly.
+                        await api.applyTheme(next, { signal });
+                    },
+                    undo: async (signal) => {
+                        await api.applyTheme(current, { signal });
+                    },
+                });
+            }}
+        >
+            Switch to {next}
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the handler does a network call or other cancellable async work
+- you want `clear()` / `dispose()` to cancel mid-flight cleanly without a
+  spurious `onError` log
+- the call is part of a transaction whose `work` already receives a
+  signal — pass that signal through to every command and `fetch`
+
+A handler that honors the signal and rejects with an `AbortError`-shaped
+error after `signal.aborted === true` produces a silent no-op: no
+`onError` event, the entry is dropped. A handler that ignores the signal
+still drops the commit via the epoch check, but `onError({ phase: "stale" })`
+fires.
+
+## 18. Custom Error Reporting
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import * as Sentry from "@sentry/react";
+
+export function App({ children }: { children: React.ReactNode }) {
+    return (
+        <AmnesiaProvider
+            capacity={300}
+            onError={(error, context) => {
+                Sentry.captureException(error, { tags: { phase: context.phase, label: context.label ?? "" } });
+            }}
+        >
+            <AmnesiaShortcuts />
+            {children}
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when failing inverses should reach an error tracker. Remember that throwing
+from the handler is caught and ignored — the handler must complete successfully.
+
+## 19. History Breadcrumb UI
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+export function HistoryBreadcrumb() {
+    const { past, future } = useAmnesia();
+    return (
+        <ol>
+            {past.map((entry) => (
+                <li key={entry.id}>{entry.label ?? `entry-${entry.id}`}</li>
+            ))}
+            {future.map((entry) => (
+                <li key={entry.id} aria-disabled="true">
+                    {entry.label ?? `entry-${entry.id}`}
+                </li>
+            ))}
+        </ol>
+    );
+}
+```
+
+Use when the UI needs to display the history. Snapshots are referentially
+stable until the next mutation, so React's render bailout works without extra
+memoization.
+
+## Anti-Patterns
+Source: https://thirtytwobits.github.io/react-amnesia/docs/ai/anti-patterns
+
+# Anti-Patterns
+
+These patterns often "work" at runtime but still encode the wrong undo
+contract.
+
+## Persisting The Undo Stack
+
+The history stack is in-memory only. Closures cannot be serialized and old
+commands are usually wrong against fresh application state.
+
+Wrong:
+
+- serializing `useAmnesia().past` and rehydrating it on the next session
+- writing every `push()` to `localStorage` so reloads "remember" undo
+
+Prefer:
+
+- persisting the underlying _value_ via `react-mnemonic` (or any other store)
+- letting the history start empty on each reload — that is the documented contract
+
+## Replaying Stale Closures Across Document Switches
+
+Switching documents leaves entries on the stack whose closures reference the
+prior document's data.
+
+Wrong:
+
+- relying on accumulated history when the user opens a different document
+- expecting Ctrl+Z to "undo across documents"
+
+Prefer:
+
+- calling `clear()` after switching state
+- scoping providers per document with a `key` prop so the provider remounts cleanly
+
+## Pushing During Render
+
+Pushing inside a render path produces unbounded history and React warnings.
+
+Wrong:
+
+- calling `push(...)` directly in a component body
+- calling `push(...)` inside `useMemo` or a derived selector
+
+Prefer:
+
+- calling `push(...)` from event handlers, effects, or commands
+- using `useUndoableState(...)` for the common single-value path so the hook owns the call site
+
+## Capturing Stale React State Inside Closures
+
+React state captured by a closure goes stale across re-renders.
+
+Wrong:
+
+```tsx
+const [value, setValue] = useState(initial);
+push({
+    redo: () => setValue("next"),
+    undo: () => setValue(value), // ← `value` is stale on later renders
+});
+```
+
+Prefer:
+
+- capturing the previous value at the call site as a local constant
+- using a ref kept in sync with state, then reading `ref.current` in the closure
+- using `useUndoableState(...)`, which already does this correctly
+
+## Treating Capacity-Bounded History As An Audit Log
+
+`react-amnesia` silently drops the oldest entries when capacity is reached.
+
+Wrong:
+
+- expecting the stack to retain every action ever performed
+- using history snapshots as evidence of what the user did
+
+Prefer:
+
+- a separate, append-only log for compliance or analytics
+- treating the undo stack as a UX affordance only
+
+## Expecting Closed Shadow Roots To Be Inspected
+
+`<AmnesiaShortcuts skipEditableTargets={true} />` walks
+`event.composedPath()` to detect editables across shadow boundaries.
+Closed shadow roots (`element.attachShadow({ mode: "closed" })`) are
+**deliberately opaque**: `composedPath` does not enter them, and the
+browser's design intent is that their internals stay hidden from outside
+listeners.
+
+Wrong:
+
+- expecting an `<input>` inside a `mode: "closed"` shadow root to be
+  recognized as editable
+- working around this by patching `attachShadow` or stealing the closed
+  root reference
+
+Prefer:
+
+- use `mode: "open"` on shadow roots that should cooperate with app-level
+  shortcuts
+- if the host author shipped `mode: "closed"` and you can't change it,
+  expose an explicit `target` element on the host or have the host call
+  `event.preventDefault()` on chords it handles itself
+
+## Stealing The Browser's Native Undo Inside Inputs
+
+The browser ships its own undo for `<input>`, `<textarea>`, and
+`contenteditable`. Stealing it usually breaks user expectations.
+
+Wrong:
+
+- `<AmnesiaShortcuts skipEditableTargets={false} />` while the app contains regular form fields
+- pushing undo entries on every keystroke and then preventing default for native chord behavior
+
+Prefer:
+
+- the default `skipEditableTargets: true`
+- `useUndoableState(...)` only for fields that genuinely benefit from app-level undo, with a `coalesceKey`
+
+## Using `clear()` As A Substitute For `undo()`
+
+`clear()` discards both stacks. It cannot be undone.
+
+Wrong:
+
+- calling `clear()` to "undo" a single bad action
+- calling `clear()` because the redo stack feels noisy
+
+Prefer:
+
+- `undo()` for individual reversals
+- `clear()` only on document switches, route transitions, logout, or similar resets
+
+## Expecting Branching On New Pushes
+
+After an `undo()`, a new `push()` clears the future stack. There is no branch
+recovery in v0.
+
+Wrong:
+
+- expecting "undo, edit, redo" to restore the previously redone state
+- relying on `future` entries surviving a push
+
+Prefer:
+
+- treating new edits after an undo as a destructive operation against the redo stack
+- prompting the user before discarding the future stack if your UX requires that
+
+## Putting Secrets Into Command `meta`
+
+History snapshots are exposed to descendant components and devtools.
+
+Wrong:
+
+- access tokens, refresh tokens, or session IDs in `meta`
+- raw user PII in command labels rendered into the DOM
+
+Prefer:
+
+- references (e.g. user id) and resolving sensitive data at runtime
+- structured labels that summarize the action without leaking material
+
+## Treating `useUndoableState`'s `reset` As Scope-Local
+
+`reset` clears the **entire scope** the hook is bound to — not just the
+value owned by this hook. Sibling `useUndoableState` calls and imperative
+`useAmnesia(scopeId).push(...)` entries in the same scope are wiped along
+with it.
+
+Wrong:
+
+- `[a, setA, resetA] = useUndoableState(0)` paired with another
+  `[b, setB] = useUndoableState(0)` in the same component, expecting
+  `resetA()` to leave `b`'s history intact
+- mounting a "discard draft" reset on a default-scope hook in an app that
+  also tracks unrelated reversible actions in the default scope
+
+Prefer:
+
+- pin sensitive history to its own scope: `useUndoableState(0, { scopeId: "draft" })`
+- use `reset` only when the scope-wide wipe is actually what you want
+- if you need to "reset only this value" without touching history, write
+  the inverse as a normal `set(initial)` — but then the operation is
+  itself undoable, and the user can roll back the reset
+
+## Leaving DevTools Enabled In Production
+
+`enableDevTools` exposes the provider's full inspection api on
+`window.__REACT_AMNESIA_DEVTOOLS__`, including triggers that mutate state
+and a `dump()` that returns every scope's `meta`. Production users do not
+need this surface, and it can leak data that `metaTransform` is supposed
+to redact in development if your `metaTransform` is dev-only.
+
+Wrong:
+
+- `<AmnesiaProvider enableDevTools>` shipped to production unconditionally
+- conditioning on `process.env.NODE_ENV` inside the component (still
+  bundled in production output if your bundler doesn't dead-code-eliminate)
+
+Prefer:
+
+- gate via a build-time env flag the bundler can statically eliminate:
+  `enableDevTools={import.meta.env.DEV}` (Vite),
+  `enableDevTools={process.env.NODE_ENV !== "production"}` (with bundler
+  define), or a custom feature flag wired to a known constant
+- ensure your `metaTransform` runs in production too, so even an
+  accidentally-enabled devtools surface gets redacted state
+
+## Driving UI From Lifecycle Hooks
+
+Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are for
+side-channel observers — analytics, devtools, audit logs. They are NOT a
+substitute for subscribing to the snapshot.
+
+Wrong:
+
+- using `onPush` to update React state via `setState` from outside the React
+  tree
+- treating the hook payload as the source of truth for "what's on the stack"
+
+Prefer:
+
+- `useAmnesia()` (or the scoped variant) — drives UI through normal
+  subscriber semantics
+- `onPush` for fire-and-forget telemetry that does not feed back into the
+  rendered output
+
+## Putting Side-Effecting Mutations Inside `metaTransform`
+
+`metaTransform` runs every time the snapshot is built and every time a hook
+fires. If it has side effects, they fire repeatedly with surprising timing.
+
+Wrong:
+
+```tsx
+metaTransform: (meta) => {
+    if (meta.audit) sendAuditLog(meta); // ← runs N times per mutation
+    return meta;
+};
+```
+
+Prefer:
+
+- pure transforms only (`return { ...meta, secret: undefined }` etc.)
+- emit telemetry from `onPush` / `onUndo` / `onRedo` instead, which fire
+  exactly once per logical action
+
+## Calling `store.push` From Inside Transaction `work`
+
+The store is single-flight while a transaction is in flight. A bare
+`store.push(...)` from inside the work function hits busy and is dropped
+silently from the user's perspective.
+
+Wrong:
+
+```tsx
+await transaction("preset", async (tx) => {
+    await tx.push({ redo, undo });
+    // BAD — second mutation is lost.
+    await store.push({ redo, undo });
+});
+```
+
+Prefer:
+
+- always use `tx.push(...)` inside the work function so the mutation joins
+  the buffer
+- if you really need a "do this on its own outside the transaction" effect,
+  schedule it after the transaction resolves
+
+## Holding `tx` Outside The Work Function
+
+The `TransactionApi` handle is closed when the surrounding `transaction(...)`
+call resolves. Calls to `tx.push` / `tx.label` after that point throw.
+
+Wrong:
+
+```tsx
+let captured;
+await transaction((tx) => {
+    captured = tx;
+});
+await captured.push(...); // throws
+```
+
+Prefer:
+
+- treat `tx` as a borrow whose lifetime is the work function's call frame
+- start a fresh transaction for the next batch of mutations
+
+## Modeling Recoverable Errors As Transaction Throws
+
+A throw inside `work` rolls back **every** buffered undo. If only some of
+the work failed, you may be undoing successful steps too.
+
+Wrong:
+
+```tsx
+await transaction(async (tx) => {
+    await tx.push(saveMetadata); // succeeded
+    try {
+        await tx.push(uploadAvatar); // failed
+    } catch {
+        // swallow — but tx is already aware of the failure
+        throw new Error("avatar failed");
+    }
+});
+```
+
+Prefer:
+
+- decide up-front whether each step is part of the atomic bundle
+- if a step is genuinely optional, fan it out as a separate `push` after the
+  transaction commits, with its own retry / undo semantics
+
+## Routing `useUndoableState` Through The Active Scope
+
+`useUndoableState` always pins to a stable `scopeId`. It does not — and
+should not — float to the active claim. React state is owned by a component
+instance; the history surface it belongs to is a stable property, not a
+focus-driven one.
+
+Wrong:
+
+- attempting to make `useUndoableState` "scope-aware" by reading
+  `useAmnesia().scopeId` inside the call site and passing it as `scopeId`
+- expecting `useUndoableState` to migrate its entries when focus moves
+
+Prefer:
+
+- declare `scopeId` once at the call site as a literal: `useUndoableState(initial, { scopeId: "canvas" })`
+- use `useAmnesia()` (no arg) only for read-only views (toolbar buttons,
+  badges) that should follow the active claim
+
+## Mixing `useAmnesiaFocusClaim` With Inert DOM
+
+`useAmnesiaFocusClaim` returns capture-phase handlers. They only fire when
+focus or pointer-down events actually reach the element they're attached to.
+
+Wrong:
+
+- spreading the handlers onto a `<div>` that has no `tabIndex` and no
+  focusable descendants — focus never enters, so the claim never fires
+- attaching them inside a child but expecting the parent's events to bubble
+  through (capture-phase only catches at the bound element)
+
+Prefer:
+
+- attach the handlers to a focusable container (`tabIndex={-1}` is fine for
+  programmatic focus, `tabIndex={0}` for tab navigation)
+- ensure the container has at least one focusable descendant or accepts
+  pointer-down itself
+
+## Using `Command.do` When `redo` Alone Would Suffice
+
+`do` exists for the narrow case where first-apply and replay genuinely need
+different closures. Using it gratuitously means the command has two code
+paths to keep in sync.
+
+Wrong:
+
+- `do` and `redo` are identical literal copies of each other
+- `do` differs from `redo` only by adding "first time!" telemetry that could
+  ride on `onPush` (Workstream E) when that lands
+
+Prefer:
+
+- omit `do` entirely; let `redo` run on initial push
+- use `do` only when first-apply produces a value (e.g. an id) that subsequent
+  replays must reuse, or when first-apply has a side effect that replay must not
+
+## Capturing Mutable State In `do` Without A Stable Closure
+
+`do` runs once. `redo` runs many times. If `redo` reads from a variable that
+`do` populated, that variable must outlive both — typically a closed-over
+`let` or a ref.
+
+Wrong:
+
+```tsx
+push({
+    do: () => {
+        const id = mintId();
+        list.add({ id, text });
+    },
+    // `id` does not exist here.
+    redo: () => list.restore(id),
+    undo: () => list.remove(id),
+});
+```
+
+Prefer:
+
+- declare the captured value at the call-site scope so `do` and `redo` / `undo`
+  share it
+- treat the entry as a self-contained unit: any state `redo` / `undo` needs
+  must be captured at push time, never recomputed inside the closures
+
+## Ignoring The AbortSignal On Long-Running Async Handlers
+
+The signal arrives as the only argument to every command handler (and as
+the second argument to a transaction's `work`). Async handlers that pass
+it to `fetch` or check `signal.aborted` in long loops cancel cleanly when
+`clear()` / `dispose()` runs. Handlers that ignore it run to completion
+unnecessarily and end up firing `onError({ phase: "stale" })` when their
+result is dropped.
+
+Wrong:
+
+```tsx
+push({
+    redo: async () => {
+        await api.applyTheme(next); // ignores cancellation
+    },
+    undo: async () => api.applyTheme(current),
+});
+```
+
+Prefer:
+
+```tsx
+push({
+    redo: async (signal) => {
+        await api.applyTheme(next, { signal });
+    },
+    undo: async (signal) => api.applyTheme(current, { signal }),
+});
+```
+
+The handler that honors the signal completes silently when cancelled (no
+`onError`, no log noise). The one that ignores it still drops the commit
+but produces a `phase: "stale"` event in your error handler.
+
+## Awaiting `push` Inside Render
+
+Calling `await store.push(...)` inside a render function, `useMemo`, or any
+synchronous render-phase code suspends the render and produces an unbounded
+stream of pushes.
+
+Wrong:
+
+- `await push(...)` inside a component body
+- `await push(...)` inside a `useMemo` factory
+
+Prefer:
+
+- `void push(...)` from event handlers when you don't care about the resolution
+- `await push(...)` from event handlers and `useEffect` callbacks when you do
+- Capture the pending state from `useAmnesia().pending` to drive UI feedback
+
+## Stacking Async Pushes Without Awaiting
+
+The store is single-flight. A second `push` while another is pending resolves
+to `null` and fires `onError({ phase: "busy" })` — the user's action is
+**dropped**, not queued.
+
+Wrong:
+
+- Firing two un-awaited async pushes back-to-back from a button handler
+- Assuming pending pushes will run sequentially after the first resolves
+
+Prefer:
+
+- `await` each push and let the user retry if a second click was intended
+- Disable the trigger UI while `useAmnesia().pending === true`
+- Compose multi-step work into one composite command rather than several
+
+## Throwing From `onError`
+
+The `onError` handler is invoked from inside the store. A throw is caught and
+discarded so the store stays consistent.
+
+Wrong:
+
+- relying on a thrown `onError` to surface failures to React error boundaries
+- side effects inside `onError` that themselves can throw and are not guarded
+
+Prefer:
+
+- forwarding to your error tracker explicitly
+- guarding side effects with `try { ... } catch { /* ignore */ }` inside the handler
+
+## Inventing Local Package Shims
+
+Do not "fix" missing type information by shadowing the package.
+
+Wrong:
+
+- `react-amnesia.d.ts`
+- `declare module "react-amnesia"`
+- importing from unpublished internal paths
+
+Prefer:
+
+- `import` and `import type` from `react-amnesia`, `react-amnesia/core`, or `react-amnesia/mnemonic`
+- checking `src/index.ts`, `package.json`, and the API docs before assuming a surface is missing
+
+## Treating The Provider As Optional
+
+`useAmnesia(...)` and `useUndoableState(...)` are not global singleton hooks.
+
+Wrong:
+
+- calling them outside an `AmnesiaProvider`
+- assuming a global window-level fallback
+
+Prefer:
+
+- one explicit provider per undo scope (often per document or workspace)
+- `useAmnesiaScopeOptional()` only for reusable components that should silently degrade outside a provider
+
+## AI Assistant Setup
+Source: https://thirtytwobits.github.io/react-amnesia/docs/ai/assistant-setup
+
+# AI Assistant Setup
+
+This page explains how users and agent builders should expose `react-amnesia`
+to coding assistants.
+
+## Canonical Source
+
+The canonical AI-oriented source is this docs section:
+
+- `/docs/ai`
+- `/docs/ai/invariants`
+- `/docs/ai/decision-matrix`
+- `/docs/ai/recipes`
+- `/docs/ai/anti-patterns`
+
+Everything else is a companion surface:
+
+- repository instruction packs for Codex, Claude Code, Cursor, and Copilot
+
+## Generated Instruction Packs
+
+The repo also ships first-party instruction packs generated from the canonical
+AI docs:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `.claude/rules/react-amnesia-undo.md`
+- `.claude/rules/decision-checklist.md`
+- `.cursor/rules/react-amnesia-undo.mdc`
+- `.cursor/rules/react-amnesia-docs.mdc`
+- `.github/copilot-instructions.md`
+- `.github/instructions/react-amnesia-undo.instructions.md`
+- `.github/instructions/react-amnesia-docs.instructions.md`
+
+Those files are projections over the same undo/redo contract rather than
+independent sources of truth.
+
+## Lowest-Friction Retrieval
+
+When an assistant has only HTTP or filesystem access, give it these paths
+first:
+
+1. `website/docs/ai/index.md`
+2. `website/docs/ai/invariants.md`
+3. `website/docs/ai/decision-matrix.md`
+4. `website/docs/ai/recipes.md`
+5. `website/docs/ai/anti-patterns.md`
+
+That ordering keeps the first context window compact while still leaving the
+recipes and anti-patterns available when the task is more complex.
+
+## Validated MCP-Friendly Path
+
+The lowest-friction MCP setup is exposing this repository through a
+filesystem-capable MCP server or any equivalent local-docs MCP layer.
+
+Mount these paths:
+
+- `website/docs/ai/index.md`
+- `website/docs/ai/invariants.md`
+- `website/docs/ai/decision-matrix.md`
+- `website/docs/ai/recipes.md`
+- `website/docs/ai/anti-patterns.md`
+- `src/Amnesia/history.ts`
+- `src/Amnesia/provider.tsx`
+- `src/Amnesia/use.ts`
+- `src/Amnesia/use-undoable-state.ts`
+- `src/Amnesia/shortcuts.tsx`
+- `src/Amnesia/types.ts`
+- `src/mnemonic.ts`
+
+This gives an MCP client both the compact docs surfaces and the source files
+that define the contract underneath them.
+
+## Sister Library
+
+`react-amnesia` is the sister project of
+[`react-mnemonic`](https://github.com/thirtytwobits/react-mnemonic), which
+handles persistent state. The optional `react-amnesia/mnemonic` bridge is the
+only place the two projects depend on each other directly. When a task spans
+both libraries, mount both repositories' AI docs side-by-side: each library
+owns its own canonical contract.
+
+## Maintenance
+
+Keep the surfaces aligned this way:
+
+- edit the canonical prose in `website/docs/ai/*`
+- regenerate instruction packs via `npm run docs:ai`
+- use `npm run ai:check` in CI or before commits to catch drift in generated AI artifacts and instruction packs
+
+The goal is simple: agents should load one canonical contract and then choose
+the right undo behavior without inventing missing semantics.

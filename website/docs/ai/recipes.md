@@ -168,7 +168,9 @@ import { useState } from "react";
 import { AmnesiaShortcuts } from "react-amnesia";
 
 export function ColorPickerModal({ open }: { open: boolean }) {
-    const [scopedHistory] = useState(() => [/* ... */]);
+    const [scopedHistory] = useState(() => [
+        /* ... */
+    ]);
     return (
         <>
             <AmnesiaShortcuts enabled={!open} />
@@ -515,7 +517,9 @@ export function App({ children }: { children: React.ReactNode }) {
                 }
                 return safe;
             }}
-            onPush={(entry, scopeId) => logEvent("undo.push", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })}
+            onPush={(entry, scopeId) =>
+                logEvent("undo.push", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })
+            }
             onUndo={(entry, scopeId) => logEvent("undo.undo", { scopeId, entryId: entry.id })}
             onRedo={(entry, scopeId) => logEvent("undo.redo", { scopeId, entryId: entry.id })}
             onClear={(scopeId) => logEvent("undo.clear", { scopeId })}
@@ -586,10 +590,7 @@ import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
 
 export function App({ children }: { children: React.ReactNode }) {
     return (
-        <AmnesiaProvider
-            enableDevTools={import.meta.env.DEV}
-            devToolsId="my-app"
-        >
+        <AmnesiaProvider enableDevTools={import.meta.env.DEV} devToolsId="my-app">
             <AmnesiaShortcuts />
             {children}
         </AmnesiaProvider>
@@ -604,9 +605,9 @@ const registry = window.__REACT_AMNESIA_DEVTOOLS__;
 if (registry) {
     const probe = registry.resolve("my-app");
     if (probe) {
-        console.table(probe.dump());     // every scope's snapshot
-        await probe.triggerUndo();       // drive an undo
-        probe.clear("draft");            // wipe a scope
+        console.table(probe.dump()); // every scope's snapshot
+        await probe.triggerUndo(); // drive an undo
+        probe.clear("draft"); // wipe a scope
     }
 }
 ```

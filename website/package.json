@@ -1,0 +1,52 @@
+{
+    "name": "react-amnesia-docs",
+    "version": "0.0.0",
+    "private": true,
+    "scripts": {
+        "docusaurus": "docusaurus",
+        "prestart": "node ./scripts/generate-ai-assets.mjs",
+        "start": "docusaurus start",
+        "prebuild": "node ./scripts/generate-ai-assets.mjs",
+        "build": "docusaurus build",
+        "swizzle": "docusaurus swizzle",
+        "deploy": "docusaurus deploy",
+        "clear": "docusaurus clear",
+        "serve": "docusaurus serve",
+        "typedoc": "docusaurus generate-typedoc"
+    },
+    "dependencies": {
+        "@docusaurus/core": "^3.9.2",
+        "@docusaurus/preset-classic": "^3.9.2",
+        "@mdx-js/react": "^3.0.0",
+        "clsx": "^2.1.0",
+        "docusaurus-plugin-typedoc": "^1.4.2",
+        "prism-react-renderer": "^2.3.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-amnesia": "file:..",
+        "typedoc": "^0.28.17",
+        "typedoc-plugin-markdown": "^4.10.0"
+    },
+    "devDependencies": {
+        "@docusaurus/module-type-aliases": "^3.9.2",
+        "@docusaurus/tsconfig": "^3.9.2",
+        "@docusaurus/types": "^3.9.2",
+        "prettier": "^3.6.2",
+        "typescript": "^5.7.3"
+    },
+    "browserslist": {
+        "production": [
+            ">0.5%",
+            "not dead",
+            "not op_mini all"
+        ],
+        "development": [
+            "last 3 chrome version",
+            "last 3 firefox version",
+            "last 5 safari version"
+        ]
+    },
+    "engines": {
+        "node": ">=20.0"
+    }
+}

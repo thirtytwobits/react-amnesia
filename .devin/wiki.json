@@ -1,0 +1,64 @@
+{
+    "pages": [
+        {
+            "title": "AI Docs Overview",
+            "description": "Start here for the compact undo/redo contract, retrieval surfaces, and links to the highest-signal AI docs.",
+            "files": [
+                "website/docs/ai/index.md",
+                "website/docs/ai/invariants.md",
+                "website/docs/ai/decision-matrix.md",
+                "website/docs/ai/recipes.md",
+                "website/docs/ai/anti-patterns.md",
+                "website/docs/ai/assistant-setup.md"
+            ]
+        },
+        {
+            "title": "Public API And README",
+            "description": "Published entry points and human-facing overview for the package surface that assistants should import from.",
+            "files": [
+                "README.md",
+                "src/index.ts",
+                "src/core.ts",
+                "src/mnemonic.ts",
+                "website/docs/getting-started/quick-start.md"
+            ]
+        },
+        {
+            "title": "Provider And Store Semantics",
+            "description": "Source files that define the multi-scope orchestration, the per-scope store, async + AbortSignal cancellation, and lifecycle hooks.",
+            "files": [
+                "src/Amnesia/provider.tsx",
+                "src/Amnesia/provider-api.ts",
+                "src/Amnesia/history.ts",
+                "src/Amnesia/types.ts"
+            ]
+        },
+        {
+            "title": "Hooks",
+            "description": "React hooks that consumers actually call: useAmnesia, useUndoableState, useAmnesiaFocusClaim, useAmnesiaScopes.",
+            "files": [
+                "src/Amnesia/use.ts",
+                "src/Amnesia/use-undoable-state.ts",
+                "src/Amnesia/use-scopes.ts",
+                "src/Amnesia/shortcuts.tsx"
+            ]
+        },
+        {
+            "title": "Devtools And Persistence Bridge",
+            "description": "Optional surfaces — devtools registry for external introspection and the optional react-mnemonic bridge for persistence-aware state.",
+            "files": ["src/Amnesia/devtools.ts", "src/mnemonic.ts"]
+        },
+        {
+            "title": "High-Risk Guides",
+            "description": "Detailed guidance for the semantics that are easiest for agents to get subtly wrong.",
+            "files": [
+                "website/docs/guides/async-commands.md",
+                "website/docs/guides/transactions.md",
+                "website/docs/guides/multi-scope-routing.md",
+                "website/docs/guides/document-switch-resets.md",
+                "website/docs/guides/error-handling.md",
+                "website/docs/guides/devtools.md"
+            ]
+        }
+    ]
+}

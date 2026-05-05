@@ -11,171 +11,171 @@ would change user behavior after a Ctrl+Z.
 
 ## Single Scope vs Multi-Scope
 
-| Need                                                                            | Approach                                                                       |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Whole-app undo on a single document                                             | One `<AmnesiaProvider>`, default scope only — no `scopeId` anywhere needed     |
-| Authoring app with several long-lived surfaces (canvas, property panel, etc.)   | One `<AmnesiaProvider>` with named scopes; `useAmnesiaFocusClaim` per surface  |
-| Multiple documents open in tabs, each with its own history                      | One `<AmnesiaProvider key={documentId}>` per document; remount on switch       |
-| Undoable component library distributed independently                            | Default scope is fine; consumer apps wrap in their own provider                |
-| Modal / overlay that should temporarily steal Ctrl+Z                            | Mount its content with `useAmnesiaFocusClaim("modal")`; release on close       |
+| Need                                                                          | Approach                                                                      |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Whole-app undo on a single document                                           | One `<AmnesiaProvider>`, default scope only — no `scopeId` anywhere needed    |
+| Authoring app with several long-lived surfaces (canvas, property panel, etc.) | One `<AmnesiaProvider>` with named scopes; `useAmnesiaFocusClaim` per surface |
+| Multiple documents open in tabs, each with its own history                    | One `<AmnesiaProvider key={documentId}>` per document; remount on switch      |
+| Undoable component library distributed independently                          | Default scope is fine; consumer apps wrap in their own provider               |
+| Modal / overlay that should temporarily steal Ctrl+Z                          | Mount its content with `useAmnesiaFocusClaim("modal")`; release on close      |
 
 ## Pin to a Scope vs Track the Active Scope
 
-| Need                                                                            | Hook                                       |
-| ------------------------------------------------------------------------------- | ------------------------------------------ |
-| Component is logically tied to one surface (canvas toolbar, props breadcrumb)   | `useAmnesia("canvas")` — pinned            |
-| Component reflects "whatever the user is editing right now"                     | `useAmnesia()` — tracks active             |
-| `useUndoableState` for a value that lives in a component                        | `{ scopeId: "..." }` — always pinned       |
-| Keyboard shortcut binding for the whole window                                  | `<AmnesiaShortcuts />` — tracks active     |
-| Region-scoped shortcut binding (canvas keyboard ops only)                       | `<AmnesiaShortcuts scopeId="canvas" target={canvasRef.current} />` |
-| Reading the active scope id for breadcrumbs                                     | `useAmnesiaScopes().activeScopeId`         |
+| Need                                                                          | Hook                                                               |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Component is logically tied to one surface (canvas toolbar, props breadcrumb) | `useAmnesia("canvas")` — pinned                                    |
+| Component reflects "whatever the user is editing right now"                   | `useAmnesia()` — tracks active                                     |
+| `useUndoableState` for a value that lives in a component                      | `{ scopeId: "..." }` — always pinned                               |
+| Keyboard shortcut binding for the whole window                                | `<AmnesiaShortcuts />` — tracks active                             |
+| Region-scoped shortcut binding (canvas keyboard ops only)                     | `<AmnesiaShortcuts scopeId="canvas" target={canvasRef.current} />` |
+| Reading the active scope id for breadcrumbs                                   | `useAmnesiaScopes().activeScopeId`                                 |
 
 ## `useUndoableState` vs `push` vs `useAmnesia`
 
-| Need                                                           | API                                | Why                                                                  |
-| -------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------- |
-| Single reversible value, replaces a `useState`                 | `useUndoableState(initial, opts)`  | Smallest call site; the hook owns redo and undo closures             |
-| Mutating something the hook can't own (lists, graphs, canvas)  | `useAmnesia().push({ redo, undo })` | Full control over the inverse; pass `{ applied: true }` after mutate |
-| Reading the stack for UI (history list, breadcrumb, badges)    | `useAmnesia()` snapshot            | Already memo-stable; no need to subscribe manually                   |
-| Direct programmatic undo / redo (toolbar buttons, menu items)  | `useAmnesia().undo()` / `.redo()`  | Resolves to the affected entry id, or `null` when the stack was empty |
+| Need                                                          | API                                 | Why                                                                   |
+| ------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| Single reversible value, replaces a `useState`                | `useUndoableState(initial, opts)`   | Smallest call site; the hook owns redo and undo closures              |
+| Mutating something the hook can't own (lists, graphs, canvas) | `useAmnesia().push({ redo, undo })` | Full control over the inverse; pass `{ applied: true }` after mutate  |
+| Reading the stack for UI (history list, breadcrumb, badges)   | `useAmnesia()` snapshot             | Already memo-stable; no need to subscribe manually                    |
+| Direct programmatic undo / redo (toolbar buttons, menu items) | `useAmnesia().undo()` / `.redo()`   | Resolves to the affected entry id, or `null` when the stack was empty |
 
 ## DevTools Registry vs Lifecycle Hooks vs Subscribers
 
-| Need                                                                            | Approach                                          |
-| ------------------------------------------------------------------------------- | ------------------------------------------------- |
-| External tool / browser extension reads live state                              | `<AmnesiaProvider enableDevTools devToolsId="…">` |
-| AI agent introspects history without touching app code                          | DevTools registry — `resolve(id)` then call api   |
-| Drive `undo` / `redo` from a debugging UI                                       | DevTools `triggerUndo` / `triggerRedo`            |
-| Telemetry on every push / undo / redo / clear                                   | Provider hooks (`onPush`, `onUndo`, `onRedo`, `onClear`) |
-| React component renders state                                                   | `useAmnesia()` snapshot — subscribers, not hooks  |
-| Per-scope analytics                                                             | Per-scope hook in `scopes={{ canvas: { onPush } }}` |
-| Forward errors                                                                  | `onError`                                         |
-| Redact secrets / PII before they leave the store                                | `metaTransform`                                   |
-| Need synchronous side effect at mutation time                                   | NOT a hook — wrap the mutation; hooks are post-notify |
+| Need                                                   | Approach                                                 |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| External tool / browser extension reads live state     | `<AmnesiaProvider enableDevTools devToolsId="…">`        |
+| AI agent introspects history without touching app code | DevTools registry — `resolve(id)` then call api          |
+| Drive `undo` / `redo` from a debugging UI              | DevTools `triggerUndo` / `triggerRedo`                   |
+| Telemetry on every push / undo / redo / clear          | Provider hooks (`onPush`, `onUndo`, `onRedo`, `onClear`) |
+| React component renders state                          | `useAmnesia()` snapshot — subscribers, not hooks         |
+| Per-scope analytics                                    | Per-scope hook in `scopes={{ canvas: { onPush } }}`      |
+| Forward errors                                         | `onError`                                                |
+| Redact secrets / PII before they leave the store       | `metaTransform`                                          |
+| Need synchronous side effect at mutation time          | NOT a hook — wrap the mutation; hooks are post-notify    |
 
 ## Lifecycle Hooks vs Subscribers
 
-| Need                                                                            | Approach                                                |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| Telemetry (analytics, audit log)                                                | Provider-level `onPush` / `onUndo` / `onRedo` / `onClear` |
-| Driving UI state ("how many entries on the stack?")                             | `useAmnesia()` snapshot — subscribers, not hooks        |
-| Per-scope analytics with different fields per surface                           | Per-scope override in `scopes={{ canvas: { onPush } }}` |
-| Forward errors to a tracker                                                     | `onError` (existing) — not a lifecycle hook             |
-| Redact secrets / PII before they leave the store                                | `metaTransform`                                         |
-| Need to fire side effects synchronously with the mutation                       | NOT a hook — wrap the mutation; hooks are post-notify   |
+| Need                                                      | Approach                                                  |
+| --------------------------------------------------------- | --------------------------------------------------------- |
+| Telemetry (analytics, audit log)                          | Provider-level `onPush` / `onUndo` / `onRedo` / `onClear` |
+| Driving UI state ("how many entries on the stack?")       | `useAmnesia()` snapshot — subscribers, not hooks          |
+| Per-scope analytics with different fields per surface     | Per-scope override in `scopes={{ canvas: { onPush } }}`   |
+| Forward errors to a tracker                               | `onError` (existing) — not a lifecycle hook               |
+| Redact secrets / PII before they leave the store          | `metaTransform`                                           |
+| Need to fire side effects synchronously with the mutation | NOT a hook — wrap the mutation; hooks are post-notify     |
 
 ## Reset / Discard / Remove
 
-| Need                                                                            | API                                                |
-| ------------------------------------------------------------------------------- | -------------------------------------------------- |
-| "Discard changes" button (snap back to a stable starting value)                 | `useUndoableState`'s `reset()`                     |
-| "Load preset" or "load template" (set a specific value, drop history)           | `useUndoableState`'s `reset(preset)`               |
-| Lazily compute the discard-target value at click time                           | `useUndoableState`'s `reset(() => compute())`      |
-| Whole-scope reset triggered from elsewhere (toolbar button, route change)       | `useAmnesiaScopes().clear(scopeId)`                |
-| Clear every scope (document switch, logout)                                     | `useAmnesiaScopes().clear()` (no arg)              |
-| Restore persisted defaultValue and wipe history                                 | `usePersistedUndoableState().reset()`              |
-| Set a specific persisted value and wipe history                                 | `usePersistedUndoableState().reset(value)`         |
-| Delete persisted key entirely (next read = defaultValue) and wipe history       | `usePersistedUndoableState().remove()`             |
+| Need                                                                      | API                                           |
+| ------------------------------------------------------------------------- | --------------------------------------------- |
+| "Discard changes" button (snap back to a stable starting value)           | `useUndoableState`'s `reset()`                |
+| "Load preset" or "load template" (set a specific value, drop history)     | `useUndoableState`'s `reset(preset)`          |
+| Lazily compute the discard-target value at click time                     | `useUndoableState`'s `reset(() => compute())` |
+| Whole-scope reset triggered from elsewhere (toolbar button, route change) | `useAmnesiaScopes().clear(scopeId)`           |
+| Clear every scope (document switch, logout)                               | `useAmnesiaScopes().clear()` (no arg)         |
+| Restore persisted defaultValue and wipe history                           | `usePersistedUndoableState().reset()`         |
+| Set a specific persisted value and wipe history                           | `usePersistedUndoableState().reset(value)`    |
+| Delete persisted key entirely (next read = defaultValue) and wipe history | `usePersistedUndoableState().remove()`        |
 
 ## `transaction` vs Many `push`es
 
-| Need                                                                            | Approach                                       |
-| ------------------------------------------------------------------------------- | ---------------------------------------------- |
-| One user action mutates several places; one Ctrl+Z should undo all of them      | `useAmnesia().transaction("Apply preset", ...)` |
-| Each mutation should remain individually undoable                               | Several `push(...)` calls                       |
-| Multi-step async work (call API, then update UI, then write to disk) atomic     | `transaction(async (tx) => { ... })`           |
-| Handlers might fail; want all-or-nothing                                        | `transaction` — rollback runs on throw         |
-| Want a "dry-run, then commit if happy" pattern                                  | `transaction` and throw to abort                |
-| Just one mutation                                                               | Plain `push` — transaction would only add notify-pair overhead |
+| Need                                                                        | Approach                                                       |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| One user action mutates several places; one Ctrl+Z should undo all of them  | `useAmnesia().transaction("Apply preset", ...)`                |
+| Each mutation should remain individually undoable                           | Several `push(...)` calls                                      |
+| Multi-step async work (call API, then update UI, then write to disk) atomic | `transaction(async (tx) => { ... })`                           |
+| Handlers might fail; want all-or-nothing                                    | `transaction` — rollback runs on throw                         |
+| Want a "dry-run, then commit if happy" pattern                              | `transaction` and throw to abort                               |
+| Just one mutation                                                           | Plain `push` — transaction would only add notify-pair overhead |
 
 ## `Command.do` vs `redo`-only
 
-| Situation                                                                            | Recommendation                       |
-| ------------------------------------------------------------------------------------ | ------------------------------------ |
-| First-apply and re-apply share identical closures (the common case)                  | Omit `do`; rely on `redo` only       |
-| First-apply mutates state in-place; re-apply restores by reference (e.g. inserting a freshly-created node vs. re-inserting it after undo) | Define both `do` and `redo`          |
-| Caller already mutated state and just wants to record the inverse                    | `push(cmd, { applied: true })`; `do` is skipped |
-| Need different telemetry on first-apply vs replay                                    | `do` for the original, `redo` for replays |
-| Want to coalesce a burst into one entry                                              | `coalesceKey`; each push's `do` runs at its own push time, the merged entry stores the latest `redo` |
+| Situation                                                                                                                                 | Recommendation                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| First-apply and re-apply share identical closures (the common case)                                                                       | Omit `do`; rely on `redo` only                                                                       |
+| First-apply mutates state in-place; re-apply restores by reference (e.g. inserting a freshly-created node vs. re-inserting it after undo) | Define both `do` and `redo`                                                                          |
+| Caller already mutated state and just wants to record the inverse                                                                         | `push(cmd, { applied: true })`; `do` is skipped                                                      |
+| Need different telemetry on first-apply vs replay                                                                                         | `do` for the original, `redo` for replays                                                            |
+| Want to coalesce a burst into one entry                                                                                                   | `coalesceKey`; each push's `do` runs at its own push time, the merged entry stores the latest `redo` |
 
 ## Cancellation Strategy
 
-| Scenario                                                                            | What you do                                                          |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Handler does an HTTP call                                                           | `fetch(url, { signal })` — auto-cancels on `clear()` / `dispose()`   |
-| Handler runs a long synchronous loop                                                | `if (signal.aborted) return` (or throw) at the top of each iteration |
-| Handler is sync and fast                                                            | Ignore the signal — it can't abort before the function returns       |
-| You want a clean cancellation (no error log)                                        | Throw an `AbortError`-shaped error after observing `signal.aborted`  |
-| You want the existing stale-drop behavior with an `onError` event                   | Ignore the signal entirely; the epoch check still drops the commit  |
-| Transaction needs to cancel a multi-step network workflow                           | Pass the work-fn's `signal` to every `fetch` and to nested commands  |
-| Two ops should share cancellation                                                   | Wrap them in one `transaction` — the work-fn's signal covers both    |
+| Scenario                                                          | What you do                                                          |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Handler does an HTTP call                                         | `fetch(url, { signal })` — auto-cancels on `clear()` / `dispose()`   |
+| Handler runs a long synchronous loop                              | `if (signal.aborted) return` (or throw) at the top of each iteration |
+| Handler is sync and fast                                          | Ignore the signal — it can't abort before the function returns       |
+| You want a clean cancellation (no error log)                      | Throw an `AbortError`-shaped error after observing `signal.aborted`  |
+| You want the existing stale-drop behavior with an `onError` event | Ignore the signal entirely; the epoch check still drops the commit   |
+| Transaction needs to cancel a multi-step network workflow         | Pass the work-fn's `signal` to every `fetch` and to nested commands  |
+| Two ops should share cancellation                                 | Wrap them in one `transaction` — the work-fn's signal covers both    |
 
 ## Sync vs Async Command Handlers
 
-| Need                                                                       | Recommendation                                                       |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Mutating local component state (the common case)                           | Sync `redo` / `undo`; subscribers see one notify per mutation        |
-| Calling a server before committing (theme apply, server URL change)        | Async `redo` / `undo`; subscribers see `pending: true` during await  |
-| `useUndoableState` setter                                                  | Stays sync-feeling — internal handlers are sync, no `pending` window |
-| Need to coalesce rapid bursts                                              | Sync handlers — coalescing across async commands is fragile          |
-| Mid-command another `push` arrives                                         | Second call resolves to `null`, fires `onError({ phase: "busy" })`   |
-| `clear()` runs while an async command is awaiting                          | Command resolves to `null`, fires `onError({ phase: "stale" })`      |
-| In-flight async command's own `redo` rejects                               | Promise rejects to caller; `onError({ phase: "push" })`; entry not added |
-| `undo` / `redo` handler throws (sync or async)                             | Resolves to `null`; entry stays in place; `onError({ phase: "undo" \| "redo", recoverable: true })` |
+| Need                                                                | Recommendation                                                                                      |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Mutating local component state (the common case)                    | Sync `redo` / `undo`; subscribers see one notify per mutation                                       |
+| Calling a server before committing (theme apply, server URL change) | Async `redo` / `undo`; subscribers see `pending: true` during await                                 |
+| `useUndoableState` setter                                           | Stays sync-feeling — internal handlers are sync, no `pending` window                                |
+| Need to coalesce rapid bursts                                       | Sync handlers — coalescing across async commands is fragile                                         |
+| Mid-command another `push` arrives                                  | Second call resolves to `null`, fires `onError({ phase: "busy" })`                                  |
+| `clear()` runs while an async command is awaiting                   | Command resolves to `null`, fires `onError({ phase: "stale" })`                                     |
+| In-flight async command's own `redo` rejects                        | Promise rejects to caller; `onError({ phase: "push" })`; entry not added                            |
+| `undo` / `redo` handler throws (sync or async)                      | Resolves to `null`; entry stays in place; `onError({ phase: "undo" \| "redo", recoverable: true })` |
 
 ## `coalesceKey` vs Separate Entries
 
-| Situation                                              | Recommendation                              | Why                                                            |
-| ------------------------------------------------------ | ------------------------------------------- | -------------------------------------------------------------- |
-| Each keystroke in a text field                         | Shared `coalesceKey: "edit:<field>"`        | A single Ctrl+Z reverts the whole burst                        |
-| Slider drag updating a value 60 times per second       | Shared `coalesceKey: "drag:<control>"`      | Otherwise capacity is consumed by intermediate frames          |
-| Discrete clicks (Add item, Delete item)                | No `coalesceKey`                            | Each action should be reversible on its own                    |
-| Distinct fields edited in alternation                  | Different `coalesceKey` per field           | Coalescing is keyed; bursts on field A do not absorb field B   |
-| Pause longer than `coalesceWindowMs` between keystrokes | Same `coalesceKey` but separate entries     | Time-based gap signals a logical pause                         |
+| Situation                                               | Recommendation                          | Why                                                          |
+| ------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| Each keystroke in a text field                          | Shared `coalesceKey: "edit:<field>"`    | A single Ctrl+Z reverts the whole burst                      |
+| Slider drag updating a value 60 times per second        | Shared `coalesceKey: "drag:<control>"`  | Otherwise capacity is consumed by intermediate frames        |
+| Discrete clicks (Add item, Delete item)                 | No `coalesceKey`                        | Each action should be reversible on its own                  |
+| Distinct fields edited in alternation                   | Different `coalesceKey` per field       | Coalescing is keyed; bursts on field A do not absorb field B |
+| Pause longer than `coalesceWindowMs` between keystrokes | Same `coalesceKey` but separate entries | Time-based gap signals a logical pause                       |
 
 ## Capacity Choice
 
-| Use case                                              | Recommended `capacity`               |
-| ----------------------------------------------------- | ------------------------------------ |
-| Casual UI (preferences, toggles)                      | Default (`100`)                      |
-| Document editor with frequent typing and undo bursts  | `300` – `1000`                       |
-| Canvas / drawing tool with high-frequency commands    | `1000`+, but rely on `coalesceKey`   |
-| Audit log or compliance trail                         | Not appropriate — model separately   |
+| Use case                                             | Recommended `capacity`             |
+| ---------------------------------------------------- | ---------------------------------- |
+| Casual UI (preferences, toggles)                     | Default (`100`)                    |
+| Document editor with frequent typing and undo bursts | `300` – `1000`                     |
+| Canvas / drawing tool with high-frequency commands   | `1000`+, but rely on `coalesceKey` |
+| Audit log or compliance trail                        | Not appropriate — model separately |
 
 ## Persisting Undoable State
 
-| Need                                                           | Choose                                              | Result after reload                                  |
-| -------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------- |
-| Reversible only within a session                               | `useUndoableState(...)`                             | Value resets, history starts empty                   |
-| Value should survive reload, history may reset                 | `usePersistedUndoableState(...)`                    | Value persists via `react-mnemonic`, history empty   |
-| Value persisted, but writes should not push undo entries       | `useMnemonicKey(...)` directly                      | Persistence-only path, no undo                       |
-| Reversible bulk action that touches multiple persisted keys    | `useAmnesia().push(...)` + manual `useMnemonicKey`  | Caller controls the inverse for each persisted key   |
+| Need                                                        | Choose                                             | Result after reload                                |
+| ----------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- |
+| Reversible only within a session                            | `useUndoableState(...)`                            | Value resets, history starts empty                 |
+| Value should survive reload, history may reset              | `usePersistedUndoableState(...)`                   | Value persists via `react-mnemonic`, history empty |
+| Value persisted, but writes should not push undo entries    | `useMnemonicKey(...)` directly                     | Persistence-only path, no undo                     |
+| Reversible bulk action that touches multiple persisted keys | `useAmnesia().push(...)` + manual `useMnemonicKey` | Caller controls the inverse for each persisted key |
 
 ## `clear()` vs `undo()` All The Way Down
 
-| Need                                                | Recommendation                       |
-| --------------------------------------------------- | ------------------------------------ |
-| Undo recent edit only                               | `undo()`                             |
-| Undo to a known earlier checkpoint                  | Loop `undo()` while `canUndo`        |
-| Document switch, route change, "open new file"      | `clear()` after switching state      |
-| User pressed "Discard changes"                      | `clear()` after restoring saved state |
-| Logout                                              | `clear()`; closures may capture user-scoped data |
+| Need                                           | Recommendation                                   |
+| ---------------------------------------------- | ------------------------------------------------ |
+| Undo recent edit only                          | `undo()`                                         |
+| Undo to a known earlier checkpoint             | Loop `undo()` while `canUndo`                    |
+| Document switch, route change, "open new file" | `clear()` after switching state                  |
+| User pressed "Discard changes"                 | `clear()` after restoring saved state            |
+| Logout                                         | `clear()`; closures may capture user-scoped data |
 
 ## Keyboard Binding Surface
 
-| Need                                                               | Recommendation                                                       |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| App-wide undo / redo                                               | One `<AmnesiaShortcuts />` inside the provider                       |
-| Modal that owns its own undo                                       | `<AmnesiaShortcuts enabled={false} />` while the modal is open       |
-| Custom Vim-style chord (e.g. `u` and `Ctrl+R`)                     | Skip `<AmnesiaShortcuts />`; call `useAmnesia().undo()` from your handler |
-| Surface-scoped undo (canvas region only)                           | `<AmnesiaShortcuts target={canvasRef.current} skipEditableTargets={false} />` |
-| Native `<input>` undo should keep working                          | Default — `skipEditableTargets` is `true`                            |
+| Need                                           | Recommendation                                                                |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| App-wide undo / redo                           | One `<AmnesiaShortcuts />` inside the provider                                |
+| Modal that owns its own undo                   | `<AmnesiaShortcuts enabled={false} />` while the modal is open                |
+| Custom Vim-style chord (e.g. `u` and `Ctrl+R`) | Skip `<AmnesiaShortcuts />`; call `useAmnesia().undo()` from your handler     |
+| Surface-scoped undo (canvas region only)       | `<AmnesiaShortcuts target={canvasRef.current} skipEditableTargets={false} />` |
+| Native `<input>` undo should keep working      | Default — `skipEditableTargets` is `true`                                     |
 
 ## Error Reporting Choice
 
-| Need                                              | Configure                                              |
-| ------------------------------------------------- | ------------------------------------------------------ |
-| Default behavior (log via `console.error`)        | Omit `onError`                                         |
-| Forward to error tracker (Sentry, Datadog, etc.)  | `onError={(error, ctx) => tracker.capture(error, ctx)}` |
-| Silence noisy expected failures                   | `onError={(error, ctx) => { if (!isExpected(error)) defaultLog(error, ctx); }}` |
-| Halt undo on first failure                        | Re-throw inside `onError` — but expect React to surface it |
+| Need                                             | Configure                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Default behavior (log via `console.error`)       | Omit `onError`                                                                  |
+| Forward to error tracker (Sentry, Datadog, etc.) | `onError={(error, ctx) => tracker.capture(error, ctx)}`                         |
+| Silence noisy expected failures                  | `onError={(error, ctx) => { if (!isExpected(error)) defaultLog(error, ctx); }}` |
+| Halt undo on first failure                       | Re-throw inside `onError` — but expect React to surface it                      |

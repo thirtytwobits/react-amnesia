@@ -9,7 +9,7 @@
  * `provider.tsx` wraps this in a Context so React components can consume it
  * via `useAmnesia()`.
  *
- * Async semantics (since `0.2.0-alpha.1`):
+ * Async semantics:
  *
  * - Command handlers may return Promises. While at least one handler is in
  *   flight, the snapshot's `pending` flag is `true` and concurrent
@@ -439,9 +439,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     const makeTxApi = (state: TransactionState, signal: AbortSignal): TransactionApi => ({
         push: async (command: Command): Promise<void> => {
             if (state.closed) {
-                throw new Error(
-                    "[Amnesia] Cannot call tx.push after the transaction has resolved",
-                );
+                throw new Error("[Amnesia] Cannot call tx.push after the transaction has resolved");
             }
             // First-apply prefers `command.do` (Workstream B). Run it now so
             // application state mutates as the work progresses; subsequent
@@ -458,9 +456,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
         },
         label: (text: string): void => {
             if (state.closed) {
-                throw new Error(
-                    "[Amnesia] Cannot call tx.label after the transaction has resolved",
-                );
+                throw new Error("[Amnesia] Cannot call tx.label after the transaction has resolved");
             }
             state.label = text;
         },
@@ -522,9 +518,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     };
 
     const transaction: Amnesia["transaction"] = (
-        labelOrWork:
-            | string
-            | ((tx: TransactionApi, signal: AbortSignal) => void | Promise<void>),
+        labelOrWork: string | ((tx: TransactionApi, signal: AbortSignal) => void | Promise<void>),
         maybeWork?: (tx: TransactionApi, signal: AbortSignal) => void | Promise<void>,
     ): Promise<number | null> => {
         const label = typeof labelOrWork === "string" ? labelOrWork : undefined;

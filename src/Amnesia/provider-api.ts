@@ -17,13 +17,7 @@
  */
 
 import { createAmnesiaStore } from "./history";
-import type {
-    Amnesia,
-    AmnesiaErrorHandler,
-    AmnesiaProviderOptions,
-    AmnesiaStoreOptions,
-    HistoryEntry,
-} from "./types";
+import type { Amnesia, AmnesiaErrorHandler, AmnesiaProviderOptions, AmnesiaStoreOptions, HistoryEntry } from "./types";
 
 /** Reserved id for the implicit default scope. */
 export const DEFAULT_SCOPE_ID = "default";

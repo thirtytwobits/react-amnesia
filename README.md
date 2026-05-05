@@ -68,11 +68,11 @@ single history entry, so a single undo reverts the entire burst.
 
 ## Pick the right entrypoint
 
-| Entrypoint                | Use when                                                                              |
-| ------------------------- | ------------------------------------------------------------------------------------- |
-| `react-amnesia/core`      | Pure undo/redo runtime. No `react-mnemonic` dependency.                               |
-| `react-amnesia/mnemonic`  | You want `usePersistedUndoableState` to combine undo with `react-mnemonic` storage.   |
-| `react-amnesia`           | Top-level entrypoint that re-exports `core`. Drop-in default for most apps.           |
+| Entrypoint               | Use when                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| `react-amnesia/core`     | Pure undo/redo runtime. No `react-mnemonic` dependency.                             |
+| `react-amnesia/mnemonic` | You want `usePersistedUndoableState` to combine undo with `react-mnemonic` storage. |
+| `react-amnesia`          | Top-level entrypoint that re-exports `core`. Drop-in default for most apps.         |
 
 ## Imperative commands
 
@@ -144,6 +144,31 @@ The undo **stack** itself is intentionally not persisted. Closures aren't
 serializable, and replaying old commands against new state is usually the
 wrong default. Reloads keep the latest value, but the history starts fresh on
 each session.
+
+## AI resources
+
+| Resource                                                                                         | Purpose                                                                           |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [AI Docs](https://thirtytwobits.github.io/react-amnesia/docs/ai)                                 | Canonical invariants, decision matrix, recipes, anti-patterns, and setup guidance |
+| [`llms.txt`](https://thirtytwobits.github.io/react-amnesia/llms.txt)                             | Compact retrieval index for tight context windows                                 |
+| [`llms-full.txt`](https://thirtytwobits.github.io/react-amnesia/llms-full.txt)                   | Long-form export for indexing and larger prompt contexts                          |
+| [`ai-contract.json`](https://thirtytwobits.github.io/react-amnesia/ai-contract.json)             | Machine-readable runtime contract for tooling and agent integrations              |
+| [DeepWiki priorities](https://github.com/thirtytwobits/react-amnesia/blob/main/.devin/wiki.json) | Steering file that points DeepWiki toward the highest-signal sources              |
+| [AI Assistant Setup](https://thirtytwobits.github.io/react-amnesia/docs/ai/assistant-setup)      | Generated instruction packs plus the documented MCP-friendly retrieval path       |
+
+## Learn more
+
+- [Documentation home](https://thirtytwobits.github.io/react-amnesia/)
+- [Quick Start](https://thirtytwobits.github.io/react-amnesia/docs/getting-started/quick-start)
+- [Keyboard Shortcuts](https://thirtytwobits.github.io/react-amnesia/docs/guides/keyboard-shortcuts)
+- [Coalescing Bursts](https://thirtytwobits.github.io/react-amnesia/docs/guides/coalescing)
+- [Imperative Commands](https://thirtytwobits.github.io/react-amnesia/docs/guides/imperative-commands)
+- [Async Commands](https://thirtytwobits.github.io/react-amnesia/docs/guides/async-commands)
+- [Transactions](https://thirtytwobits.github.io/react-amnesia/docs/guides/transactions)
+- [Multi-Scope Routing](https://thirtytwobits.github.io/react-amnesia/docs/guides/multi-scope-routing)
+- [DevTools](https://thirtytwobits.github.io/react-amnesia/docs/guides/devtools)
+- [Error Handling](https://thirtytwobits.github.io/react-amnesia/docs/guides/error-handling)
+- [API Reference](https://thirtytwobits.github.io/react-amnesia/docs/api)
 
 ## License
 

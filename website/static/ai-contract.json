@@ -1,0 +1,127 @@
+{
+    "version": 1,
+    "title": "react-amnesia AI Contract",
+    "canonicalDocs": {
+        "index": "https://thirtytwobits.github.io/react-amnesia/docs/ai",
+        "invariants": "https://thirtytwobits.github.io/react-amnesia/docs/ai/invariants",
+        "decision-matrix": "https://thirtytwobits.github.io/react-amnesia/docs/ai/decision-matrix",
+        "recipes": "https://thirtytwobits.github.io/react-amnesia/docs/ai/recipes",
+        "anti-patterns": "https://thirtytwobits.github.io/react-amnesia/docs/ai/anti-patterns",
+        "assistant-setup": "https://thirtytwobits.github.io/react-amnesia/docs/ai/assistant-setup"
+    },
+    "retrievalSurfaces": {
+        "llms": "https://thirtytwobits.github.io/react-amnesia/llms.txt",
+        "llmsFull": "https://thirtytwobits.github.io/react-amnesia/llms-full.txt",
+        "machineReadable": "https://thirtytwobits.github.io/react-amnesia/ai-contract.json",
+        "deepWikiConfig": "https://github.com/thirtytwobits/react-amnesia/blob/main/.devin/wiki.json"
+    },
+    "runtimeContract": {
+        "type": "in-memory, async-aware, single-flight",
+        "requiredProvider": true,
+        "defaultScopeId": "default",
+        "signalArgument": "AbortSignal — first arg to do/redo/undo, second arg to transaction work",
+        "actions": {
+            "push": "apply via do ?? redo and append to past stack",
+            "undo": "pop past, run undo, append to future",
+            "redo": "pop future, run redo, append to past",
+            "clear": "drop past + future of one or all scopes; aborts in-flight signals",
+            "dispose": "tear down store; aborts in-flight signals",
+            "transaction": "buffer N pushes into a single composite entry"
+        }
+    },
+    "typeContract": {
+        "sourceOfTruth": "published package exports",
+        "importPath": "react-amnesia",
+        "allowLocalAmbientShims": false,
+        "forbiddenPatterns": ["react-amnesia.d.ts", "declare module \"react-amnesia\""],
+        "fallbackOrder": ["src/index.ts", "src/core.ts", "src/mnemonic.ts", "package.json", "api-docs", "docs/ai"]
+    },
+    "pushLifecycle": [
+        "if disposed → null",
+        "if pending → onError(busy), null",
+        "invoke command.do ?? command.redo with the AbortSignal",
+        "await if thenable",
+        "if signal.aborted → silent null",
+        "if epoch changed → onError(stale), null",
+        "coalesce-merge if previous shares coalesceKey within window, else append",
+        "evict at commit when over capacity",
+        "notify subscribers, fire onPush hook (microtask-deferred)"
+    ],
+    "undoLifecycle": [
+        "if disposed → null",
+        "if pending → onError(busy), null",
+        "if past empty → null without notify",
+        "invoke entry.undo with the AbortSignal",
+        "await if thenable",
+        "if throws and signal not aborted → onError(undo), entry stays in past, null",
+        "if signal.aborted → silent null",
+        "pop past, push future, notify, fire onUndo hook"
+    ],
+    "transactionContract": {
+        "composite": "one entry on commit; redo replays buffered redos in order; undo replays buffered undos in reverse",
+        "rollback": "throw or stale runs every buffered undo in reverse",
+        "nested": "flatten into outer; nested label ignored; resolves to null",
+        "coalescing": "composite never coalesces with neighbors; tx.push entries do not coalesce within the buffer"
+    },
+    "multiScope": {
+        "creation": "lazy, by first reference",
+        "defaultScope": "always available, never registered explicitly",
+        "focusClaim": "useAmnesiaFocusClaim(scopeId) returns capture-phase handlers; single most-recent claim wins",
+        "clearScope": "useAmnesia(scopeId).clear() — only that scope",
+        "clearAll": "useAmnesiaScopes().clear() with no arg — every scope"
+    },
+    "decisionShortcuts": {
+        "sameScopeMultipleEntries": "useAmnesia().push(...)",
+        "sameScopeOneCompositeEntry": "useAmnesia().transaction(label, work)",
+        "scopeWideHistoryReset": "useUndoableState(...)[2]() — third tuple slot",
+        "clearAllScopes": "useAmnesiaScopes().clear()",
+        "cancellableServerCall": "redo: async (signal) => fetch(url, { signal })",
+        "externalIntrospection": "<AmnesiaProvider enableDevTools devToolsId=\"…\">"
+    },
+    "cancellation": {
+        "signalSource": "one AbortController per op; clear() / dispose() abort all",
+        "honoredAbort": "silent — no onError, entry dropped",
+        "ignoredAbort": "phase: stale fires, entry dropped via epoch",
+        "rollbackSignal": "fresh AbortSignal — original was aborted"
+    },
+    "quickRules": [
+        "`useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.",
+        "The undo stack is in-memory only. Persist the value (e.g. via `react-mnemonic`) — never the closures.",
+        "`Command.do` / `redo` / `undo` may be sync or async. `push` / `undo` / `redo` always return `Promise<number | null>`.",
+        "Each handler receives an `AbortSignal`. `clear()` and `dispose()` abort it; pass it to `fetch` for clean cancellation.",
+        "An AbortError thrown after `signal.aborted === true` is a silent no-op. A handler that ignores the signal still drops the commit but fires `onError({ phase: \"stale\" })`.",
+        "The store is single-flight. Concurrent ops while `pending === true` resolve to `null` with `onError({ phase: \"busy\" })`.",
+        "`push({ redo, undo, label })` calls `redo()` once on insertion. Pass `{ applied: true }` when state is already mutated.",
+        "Use `coalesceKey` for keystroke / drag bursts so a single Ctrl+Z reverts the whole burst.",
+        "A new `push` clears the redo (future) stack — branching is not supported.",
+        "`useUndoableState` returns `[value, set, reset]`. `reset(next?)` clears the bound scope's history; it is not undoable.",
+        "Multi-scope: one provider, many independent stores. `useAmnesiaFocusClaim(scopeId)` routes Ctrl+Z to the focused scope.",
+        "Transactions collapse N pushes into one composite entry; throw inside `work` runs every buffered undo in reverse.",
+        "Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are post-notify, microtask-deferred, and re-entrant-safe.",
+        "`metaTransform` redacts `meta` everywhere it leaves the store — snapshot AND hooks.",
+        "`<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` and walks `composedPath()` to recognize editables in shadow roots.",
+        "DevTools registry (`enableDevTools`) is opt-in and lazy-installed; nothing in the bundle activates unless a provider sets it.",
+        "Import published values and types from `react-amnesia`, not internal paths or local ambient shims."
+    ],
+    "recipes": [
+        "reversible-single-value-editor",
+        "coalesced-slider-drag",
+        "imperative-list-mutation",
+        "persistence-aware-editor",
+        "document-switch-with-clear",
+        "modal-owns-its-own-keybindings",
+        "surface-scoped-shortcut-binding",
+        "web-component-shadow-dom-editable",
+        "reversible-multi-key-persisted-action",
+        "async-command-server-backed-setting",
+        "divergent-first-apply-with-command-do",
+        "multi-scope-authoring-app",
+        "transaction-multi-step-composite-entry",
+        "telemetry-with-lifecycle-hooks-and-meta-transform",
+        "discard-changes-with-reset",
+        "wiring-devtools-for-agent-extension-introspection",
+        "cancellable-async-command-with-abort-signal",
+        "custom-error-reporting",
+        "history-breadcrumb-ui"
+    ]
+}

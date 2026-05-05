@@ -243,9 +243,9 @@ Wrong:
 
 ```tsx
 metaTransform: (meta) => {
-    if (meta.audit) sendAuditLog(meta);   // ← runs N times per mutation
+    if (meta.audit) sendAuditLog(meta); // ← runs N times per mutation
     return meta;
-}
+};
 ```
 
 Prefer:
@@ -306,7 +306,7 @@ Wrong:
 
 ```tsx
 await transaction(async (tx) => {
-    await tx.push(saveMetadata);    // succeeded
+    await tx.push(saveMetadata); // succeeded
     try {
         await tx.push(uploadAvatar); // failed
     } catch {

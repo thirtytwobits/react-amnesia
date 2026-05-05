@@ -12,11 +12,7 @@ import { createAmnesiaStore } from "./history";
  * to catch regressions the hand-written tests might miss.
  */
 
-type Op =
-    | { kind: "push"; async: boolean }
-    | { kind: "undo" }
-    | { kind: "redo" }
-    | { kind: "clear" };
+type Op = { kind: "push"; async: boolean } | { kind: "undo" } | { kind: "redo" } | { kind: "clear" };
 
 const opArb: fc.Arbitrary<Op> = fc.oneof(
     fc.record({ kind: fc.constant("push" as const), async: fc.boolean() }),

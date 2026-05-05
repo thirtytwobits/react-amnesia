@@ -1,0 +1,50 @@
+# react-amnesia
+> AI-friendly application undo/redo (Ctrl+Z) for React. Async commands, multi-scope routing, transactions, lifecycle hooks, AbortSignal cancellation, and an opt-in devtools registry.
+
+Use this file as the compact retrieval index. The canonical AI-oriented prose
+lives under `/docs/ai`, with `/llms-full.txt` as the long-form export and
+`/ai-contract.json` as the machine-readable companion.
+
+## Recommended reading
+
+- [AI Overview](https://thirtytwobits.github.io/react-amnesia/docs/ai) - Canonical entry point for the undo/redo contract: providers, scopes, async commands, transactions, devtools.
+- [Invariants](https://thirtytwobits.github.io/react-amnesia/docs/ai/invariants) - Deterministic guarantees for push / undo / redo, transactions, multi-scope routing, lifecycle hooks, and AbortSignal cancellation.
+- [Decision Matrix](https://thirtytwobits.github.io/react-amnesia/docs/ai/decision-matrix) - Decision tables for hook choice, coalescing, capacity, scope routing, transactions, lifecycle hooks, devtools, and cancellation.
+- [Recipes](https://thirtytwobits.github.io/react-amnesia/docs/ai/recipes) - Copy-pastable patterns for reversible state, coalesced bursts, imperative commands, transactions, multi-scope authoring, async + AbortSignal, devtools wiring, and discard-changes resets.
+- [Anti-Patterns](https://thirtytwobits.github.io/react-amnesia/docs/ai/anti-patterns) - Common mistakes that produce incorrect undo semantics even when the UI appears to work — persisting closures, stealing native undo, ignoring AbortSignals, leaving devtools on in production.
+- [AI Assistant Setup](https://thirtytwobits.github.io/react-amnesia/docs/ai/assistant-setup) - How to expose the canonical docs through llms files and MCP-friendly retrieval paths.
+
+## Key guides
+
+- [Quick Start](https://thirtytwobits.github.io/react-amnesia/docs/getting-started/quick-start)
+- [Keyboard Shortcuts](https://thirtytwobits.github.io/react-amnesia/docs/guides/keyboard-shortcuts)
+- [Coalescing Bursts](https://thirtytwobits.github.io/react-amnesia/docs/guides/coalescing)
+- [Imperative Commands](https://thirtytwobits.github.io/react-amnesia/docs/guides/imperative-commands)
+- [Async Commands](https://thirtytwobits.github.io/react-amnesia/docs/guides/async-commands)
+- [Transactions](https://thirtytwobits.github.io/react-amnesia/docs/guides/transactions)
+- [Multi-Scope Routing](https://thirtytwobits.github.io/react-amnesia/docs/guides/multi-scope-routing)
+- [Document Switch Resets](https://thirtytwobits.github.io/react-amnesia/docs/guides/document-switch-resets)
+- [Optional Persistence](https://thirtytwobits.github.io/react-amnesia/docs/guides/optional-persistence)
+- [DevTools](https://thirtytwobits.github.io/react-amnesia/docs/guides/devtools)
+- [Error Handling](https://thirtytwobits.github.io/react-amnesia/docs/guides/error-handling)
+- [API Reference](https://thirtytwobits.github.io/react-amnesia/docs/api)
+
+## Quick rules
+
+- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- The undo stack is in-memory only. Persist the value (e.g. via `react-mnemonic`) — never the closures.
+- `Command.do` / `redo` / `undo` may be sync or async. `push` / `undo` / `redo` always return `Promise<number | null>`.
+- Each handler receives an `AbortSignal`. `clear()` and `dispose()` abort it; pass it to `fetch` for clean cancellation.
+- An AbortError thrown after `signal.aborted === true` is a silent no-op. A handler that ignores the signal still drops the commit but fires `onError({ phase: "stale" })`.
+- The store is single-flight. Concurrent ops while `pending === true` resolve to `null` with `onError({ phase: "busy" })`.
+- `push({ redo, undo, label })` calls `redo()` once on insertion. Pass `{ applied: true }` when state is already mutated.
+- Use `coalesceKey` for keystroke / drag bursts so a single Ctrl+Z reverts the whole burst.
+- A new `push` clears the redo (future) stack — branching is not supported.
+- `useUndoableState` returns `[value, set, reset]`. `reset(next?)` clears the bound scope's history; it is not undoable.
+- Multi-scope: one provider, many independent stores. `useAmnesiaFocusClaim(scopeId)` routes Ctrl+Z to the focused scope.
+- Transactions collapse N pushes into one composite entry; throw inside `work` runs every buffered undo in reverse.
+- Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are post-notify, microtask-deferred, and re-entrant-safe.
+- `metaTransform` redacts `meta` everywhere it leaves the store — snapshot AND hooks.
+- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` and walks `composedPath()` to recognize editables in shadow roots.
+- DevTools registry (`enableDevTools`) is opt-in and lazy-installed; nothing in the bundle activates unless a provider sets it.
+- Import published values and types from `react-amnesia`, not internal paths or local ambient shims.

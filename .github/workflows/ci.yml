@@ -1,0 +1,43 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+
+jobs:
+    build-test:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                node-version: [20]
+                react-version: ["18.3.1", "19.2.5"]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: npm
+            - run: npm ci
+            - name: Install React ${{ matrix.react-version }}
+              run: npm install --no-save react@${{ matrix.react-version }} react-dom@${{ matrix.react-version }}
+            - run: npm run lint
+            - run: npm run format:check
+            - run: npm run ai:check
+            - run: npm run build
+            - run: npm run test
+
+    docs-build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+            - run: npm ci
+            - run: npm run build
+            - run: npm --prefix website ci
+            - run: npm run docs
+            - run: npm run docs:site

@@ -305,7 +305,7 @@ describe("createAmnesiaStore — transactions (Workstream D)", () => {
         expect(store.getSnapshot().past).toHaveLength(2);
     });
 
-    it("surfaces rollback failures as phase: \"rollback\" while the original error still propagates", async () => {
+    it('surfaces rollback failures as phase: "rollback" while the original error still propagates', async () => {
         const onError = vi.fn();
         const store = createAmnesiaStore({ onError });
 
@@ -336,9 +336,7 @@ describe("createAmnesiaStore — transactions (Workstream D)", () => {
 
     it("throws synchronously from tx.push / tx.label after the transaction has resolved", async () => {
         const store = createAmnesiaStore();
-        let escaped:
-            | { push: (cmd: unknown) => Promise<void>; label: (text: string) => void }
-            | null = null;
+        let escaped: { push: (cmd: unknown) => Promise<void>; label: (text: string) => void } | null = null;
 
         await store.transaction((tx) => {
             escaped = tx as unknown as typeof escaped;
