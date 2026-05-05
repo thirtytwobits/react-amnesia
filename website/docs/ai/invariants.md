@@ -13,9 +13,10 @@ guarantees.
 
 - `useAmnesia(...)`, `useUndoableState(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
 - The history store is in-memory only. Closures are never serialized and the stack does not survive a reload.
-- `Command.redo` and `Command.undo` may be synchronous or return a `Promise<void>`.
+- `Command.redo` and `Command.undo` are required and may be synchronous or return a `Promise<void>`.
+- `Command.do` is optional. When present, it runs once at push time instead of `redo`; it is consumed there and never stored on the entry.
 - `push` / `undo` / `redo` always return `Promise<number | null>`. Synchronous handlers resolve in the same microtask with no observable `pending: true` window.
-- `push(command)` calls `command.redo()` exactly once on insertion unless `{ applied: true }` is passed.
+- `push(command)` invokes `command.do ?? command.redo` exactly once on insertion unless `{ applied: true }` is passed.
 - `push(...)` always clears the future (redo) stack. No branching is supported in v0.
 - `undo()` pops the most recent past entry, calls its `undo()`, and pushes it onto the future stack. Resolves to the entry id, or `null` when the past stack is empty.
 - `redo()` pops the most recent future entry, calls its `redo()`, and pushes it onto the past stack. Resolves to the entry id, or `null` when the future stack is empty.
@@ -27,7 +28,7 @@ guarantees.
 - The listener list is snapshotted before dispatch, so callbacks added or removed during a notify cycle do not affect the current tick.
 - Capacity defaults to `100` and is clamped to a minimum of `1`. When exceeded, the oldest past entry is dropped silently on the next push. Eviction happens at commit, not at schedule.
 - `coalesceWindowMs` defaults to `400` and is clamped to a minimum of `0`. Coalescing timestamps are taken at commit. Coalescing across async commands is supported but fragile — recommend against it.
-- Two consecutive pushes coalesce when they share the same non-empty `coalesceKey` and the second arrives within `coalesceWindowMs` of the first. The merged entry keeps the earlier `undo` and the latest `redo` so a single undo reverts the whole burst.
+- Two consecutive pushes coalesce when they share the same non-empty `coalesceKey` and the second arrives within `coalesceWindowMs` of the first. The merged entry keeps the earlier `undo` and the latest `redo` so a single undo reverts the whole burst. Each push's `do` is invoked at its own push time; the merged entry never stores a `do`.
 - A throwing `redo()` or `undo()` leaves the entry in place and surfaces via `onError({ phase: "undo" | "redo", recoverable: true })`. The application is responsible for retry or recovery.
 - Concurrent operations while `pending === true` resolve to `null` and surface as `onError({ phase: "busy" })`. The store is single-flight.
 - An async op whose `await` outlasts a `clear()` or `dispose()` resolves to `null` and surfaces as `onError({ phase: "stale" })`. State has already been cleared by the racing call.
@@ -49,8 +50,8 @@ guarantees.
 
 1. If the store is disposed, resolve to `null`.
 2. If `pendingTokens` is non-empty (another op is in flight), schedule `onError({ phase: "busy" })` and resolve to `null`.
-3. If `options.applied` is not `true`, invoke `command.redo()`. A synchronous throw is scheduled as `onError({ phase: "push" })` and re-thrown to the caller; the entry is not added.
-4. If `command.redo()` returned a Promise, notify subscribers (so `pending: true` is observable), then `await` it. A rejection schedules `onError({ phase: "push" })` and re-throws.
+3. If `options.applied` is not `true`, invoke `command.do ?? command.redo`. A synchronous throw is scheduled as `onError({ phase: "push" })` and re-thrown to the caller; the entry is not added.
+4. If the invoked handler returned a Promise, notify subscribers (so `pending: true` is observable), then `await` it. A rejection schedules `onError({ phase: "push" })` and re-throws.
 5. After resume, if the store's `epoch` has changed (a `clear()` or `dispose()` raced the await), schedule `onError({ phase: "stale" })` and resolve to `null` without committing.
 6. Read the most recent past entry. If it shares a non-empty `coalesceKey` with the new command and the elapsed wall-clock time at commit is within `coalesceWindowMs`, replace it with a merged entry (latest `redo`, original `undo`, latest label / coalesceKey / meta) and clear the future stack.
 7. Otherwise, append a new entry with a fresh monotonic id. If the past stack now exceeds `capacity`, drop the oldest entry. Clear the future stack.

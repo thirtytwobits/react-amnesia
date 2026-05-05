@@ -480,3 +480,156 @@ describe("createAmnesiaStore — dispose", () => {
         expect(onError).toHaveBeenCalledWith(undefined, expect.objectContaining({ phase: "stale" }));
     });
 });
+
+describe("createAmnesiaStore — Command.do (Workstream B)", () => {
+    it("invokes do on initial push and redo on every replay", async () => {
+        const events: string[] = [];
+        const store = createAmnesiaStore();
+        await store.push({
+            label: "insert",
+            do: () => {
+                events.push("do");
+            },
+            redo: () => {
+                events.push("redo");
+            },
+            undo: () => {
+                events.push("undo");
+            },
+        });
+        expect(events).toEqual(["do"]);
+
+        await store.undo();
+        expect(events).toEqual(["do", "undo"]);
+
+        await store.redo();
+        expect(events).toEqual(["do", "undo", "redo"]);
+
+        await store.undo();
+        await store.redo();
+        expect(events).toEqual(["do", "undo", "redo", "undo", "redo"]);
+    });
+
+    it("falls back to redo when do is omitted", async () => {
+        const events: string[] = [];
+        const store = createAmnesiaStore();
+        await store.push({
+            redo: () => {
+                events.push("redo");
+            },
+            undo: () => {
+                events.push("undo");
+            },
+        });
+        // No `do` — `redo` runs on the initial push.
+        expect(events).toEqual(["redo"]);
+    });
+
+    it("skips do when applied: true is passed", async () => {
+        const events: string[] = [];
+        const store = createAmnesiaStore();
+        await store.push(
+            {
+                do: () => {
+                    events.push("do");
+                },
+                redo: () => {
+                    events.push("redo");
+                },
+                undo: () => undefined,
+            },
+            { applied: true },
+        );
+        expect(events).toEqual([]);
+
+        await store.undo();
+        await store.redo();
+        // First replay uses `redo`, never `do`.
+        expect(events).toEqual(["redo"]);
+    });
+
+    it("supports async do", async () => {
+        const events: string[] = [];
+        const store = createAmnesiaStore();
+        await store.push({
+            do: async () => {
+                await Promise.resolve();
+                events.push("do");
+            },
+            redo: () => {
+                events.push("redo");
+            },
+            undo: () => undefined,
+        });
+        expect(events).toEqual(["do"]);
+        await store.undo();
+        await store.redo();
+        expect(events).toEqual(["do", "redo"]);
+    });
+
+    it("re-throws an async do failure and does not push the entry", async () => {
+        const onError = vi.fn();
+        const store = createAmnesiaStore({ onError });
+
+        await expect(
+            store.push({
+                do: async () => {
+                    await Promise.resolve();
+                    throw new Error("do blew up");
+                },
+                redo: () => undefined,
+                undo: () => undefined,
+            }),
+        ).rejects.toThrow(/do blew up/);
+
+        expect(store.getSnapshot().canUndo).toBe(false);
+        await flushMicrotasks();
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError.mock.calls[0]![1]).toMatchObject({ phase: "push" });
+    });
+
+    it("coalesces by replacing redo, not do, so subsequent replays see the latest redo", async () => {
+        const events: string[] = [];
+        const store = createAmnesiaStore({ coalesceWindowMs: 1000 });
+
+        // First push of a coalescing burst: `do` performs the initial mutation,
+        // `redo` performs the equivalent replay.
+        await store.push({
+            coalesceKey: "burst",
+            do: () => {
+                events.push("do(1)");
+            },
+            redo: () => {
+                events.push("redo(1)");
+            },
+            undo: () => {
+                events.push("undo(1)");
+            },
+        });
+        // Second push merges into the same entry. Its `do` runs once at push
+        // time; the merged entry's stored `redo` becomes redo(2).
+        await store.push({
+            coalesceKey: "burst",
+            do: () => {
+                events.push("do(2)");
+            },
+            redo: () => {
+                events.push("redo(2)");
+            },
+            undo: () => {
+                events.push("undo(should-not-fire)");
+            },
+        });
+        expect(events).toEqual(["do(1)", "do(2)"]);
+        // Past has exactly one merged entry.
+        expect(store.getSnapshot().past).toHaveLength(1);
+
+        await store.undo();
+        // Merged entry preserves the original undo.
+        expect(events).toEqual(["do(1)", "do(2)", "undo(1)"]);
+
+        await store.redo();
+        // Merged entry's redo is the LATEST one, not do(2) and not redo(1).
+        expect(events).toEqual(["do(1)", "do(2)", "undo(1)", "redo(2)"]);
+    });
+});

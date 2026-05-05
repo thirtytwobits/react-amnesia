@@ -145,6 +145,51 @@ Prefer:
 - references (e.g. user id) and resolving sensitive data at runtime
 - structured labels that summarize the action without leaking material
 
+## Using `Command.do` When `redo` Alone Would Suffice
+
+`do` exists for the narrow case where first-apply and replay genuinely need
+different closures. Using it gratuitously means the command has two code
+paths to keep in sync.
+
+Wrong:
+
+- `do` and `redo` are identical literal copies of each other
+- `do` differs from `redo` only by adding "first time!" telemetry that could
+  ride on `onPush` (Workstream E) when that lands
+
+Prefer:
+
+- omit `do` entirely; let `redo` run on initial push
+- use `do` only when first-apply produces a value (e.g. an id) that subsequent
+  replays must reuse, or when first-apply has a side effect that replay must not
+
+## Capturing Mutable State In `do` Without A Stable Closure
+
+`do` runs once. `redo` runs many times. If `redo` reads from a variable that
+`do` populated, that variable must outlive both — typically a closed-over
+`let` or a ref.
+
+Wrong:
+
+```tsx
+push({
+    do: () => {
+        const id = mintId();
+        list.add({ id, text });
+    },
+    // `id` does not exist here.
+    redo: () => list.restore(id),
+    undo: () => list.remove(id),
+});
+```
+
+Prefer:
+
+- declare the captured value at the call-site scope so `do` and `redo` / `undo`
+  share it
+- treat the entry as a self-contained unit: any state `redo` / `undo` needs
+  must be captured at push time, never recomputed inside the closures
+
 ## Awaiting `push` Inside Render
 
 Calling `await store.push(...)` inside a render function, `useMemo`, or any

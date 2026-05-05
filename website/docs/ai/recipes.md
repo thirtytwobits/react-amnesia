@@ -295,7 +295,59 @@ Use when:
 The handler returning a Promise causes the store to flip `pending: true` for
 the duration of the await. Subscribers see the busy state synchronously.
 
-## 10. Custom Error Reporting
+## 10. Divergent First-Apply With `Command.do`
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type Node = { id: string; text: string };
+
+export function InsertNodeButton({
+    list,
+    text,
+}: {
+    text: string;
+    list: { add: (node: Node) => void; restore: (id: string) => void; remove: (id: string) => void };
+}) {
+    const { push } = useAmnesia();
+
+    return (
+        <button
+            onClick={() => {
+                // First-apply mints the new node id. Redo-after-undo reuses the
+                // existing id via `restore` rather than minting a new one.
+                let mintedId: string | null = null;
+                push({
+                    label: "Insert node",
+                    do: () => {
+                        const node = { id: crypto.randomUUID(), text };
+                        mintedId = node.id;
+                        list.add(node);
+                    },
+                    redo: () => {
+                        if (mintedId) list.restore(mintedId);
+                    },
+                    undo: () => {
+                        if (mintedId) list.remove(mintedId);
+                    },
+                });
+            }}
+        >
+            Insert
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the initial application has effects that should not repeat on a redo replay
+- the inverse needs a stable identity captured at first-apply (here, `mintedId`)
+- the caller wants the entry to participate in normal redo cycles after the first apply
+
+`do` runs once at push time. Subsequent redos always invoke `command.redo`.
+
+## 11. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -319,7 +371,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 11. History Breadcrumb UI
+## 12. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";

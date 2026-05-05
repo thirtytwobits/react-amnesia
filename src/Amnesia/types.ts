@@ -19,14 +19,18 @@
  *
  * Commands are stored as a pair of imperative thunks:
  *
- * - `redo()` — apply the action (also called when the entry is first pushed,
- *   unless `applied: true` is passed to `push`).
+ * - `redo()` — apply the action (called on every redo, and on initial push
+ *   when `do` is omitted).
  * - `undo()` — revert the action.
+ *
+ * An optional `do` field lets the initial application differ from a redo
+ * replay. Use it when first-apply requires setup that re-apply does not
+ * (e.g. inserting a freshly-created object whose id was just minted).
  *
  * Implementations are responsible for capturing whatever closure state they
  * need to perform the inverse. Amnesia does not introspect the value.
  *
- * Both handlers may be synchronous or asynchronous. When a handler returns a
+ * All handlers may be synchronous or asynchronous. When a handler returns a
  * Promise, the surrounding `push` / `undo` / `redo` call awaits it; the store
  * stays in a `pending` state for the duration of the await and other concurrent
  * operations are dropped (see `AmnesiaState.pending`).
@@ -39,11 +43,27 @@ export interface Command {
     label?: string;
 
     /**
+     * Optional initial-apply handler. When present and `push` is called
+     * without `applied: true`, `do()` is invoked exactly once at push time
+     * instead of `redo()`.
+     *
+     * `do` is **consumed at push time and is not stored on the entry** —
+     * subsequent `redo()` calls always invoke `command.redo`. Use this when
+     * the inverse of "first apply" and "re-apply after undo" need different
+     * closures (e.g. inserting a freshly-minted node vs. restoring it by id).
+     *
+     * When `do` is omitted, the store falls back to `redo` for the initial
+     * application. Most reversible state changes do not need `do`.
+     *
+     * May be synchronous or return a Promise.
+     */
+    do?: () => void | Promise<void>;
+
+    /**
      * Apply (or re-apply) the action.
      *
-     * Called on every `redo()` for this entry. If `push` is called without
-     * `applied: true`, this is also invoked once on push so callers can write
-     * "do and remember" in a single line.
+     * Called on every `redo()` for this entry. Also invoked once on push
+     * when `do` is absent and `applied: true` is not set.
      *
      * May be synchronous or return a Promise.
      */

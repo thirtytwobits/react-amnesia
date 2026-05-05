@@ -217,7 +217,11 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         return startOp(
             "push",
             () => ({
-                invoke: applied ? () => undefined : () => command.redo(),
+                // Initial apply prefers `command.do` when supplied; otherwise
+                // it falls back to `command.redo`. `do` is consumed here only
+                // and never stored on the entry — subsequent redos always run
+                // `command.redo`.
+                invoke: applied ? () => undefined : () => (command.do ?? command.redo)(),
                 payload: command,
             }),
             (cmd: Command) => {

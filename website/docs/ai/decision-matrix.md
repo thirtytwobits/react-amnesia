@@ -18,6 +18,16 @@ would change user behavior after a Ctrl+Z.
 | Reading the stack for UI (history list, breadcrumb, badges)    | `useAmnesia()` snapshot            | Already memo-stable; no need to subscribe manually                   |
 | Direct programmatic undo / redo (toolbar buttons, menu items)  | `useAmnesia().undo()` / `.redo()`  | Resolves to the affected entry id, or `null` when the stack was empty |
 
+## `Command.do` vs `redo`-only
+
+| Situation                                                                            | Recommendation                       |
+| ------------------------------------------------------------------------------------ | ------------------------------------ |
+| First-apply and re-apply share identical closures (the common case)                  | Omit `do`; rely on `redo` only       |
+| First-apply mutates state in-place; re-apply restores by reference (e.g. inserting a freshly-created node vs. re-inserting it after undo) | Define both `do` and `redo`          |
+| Caller already mutated state and just wants to record the inverse                    | `push(cmd, { applied: true })`; `do` is skipped |
+| Need different telemetry on first-apply vs replay                                    | `do` for the original, `redo` for replays |
+| Want to coalesce a burst into one entry                                              | `coalesceKey`; each push's `do` runs at its own push time, the merged entry stores the latest `redo` |
+
 ## Sync vs Async Command Handlers
 
 | Need                                                                       | Recommendation                                                       |
