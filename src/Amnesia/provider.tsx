@@ -4,17 +4,30 @@
 /**
  * @fileoverview React context provider for the Amnesia undo/redo store.
  *
- * Wrap your application (or the subtree that owns a single document/scope)
- * in `<AmnesiaProvider>`. Components inside can then call `useAmnesia()` to
- * push commands and trigger undo/redo, or `useUndoableState()` to manage
- * history-aware state.
+ * Wrap your application (or the subtree that owns a single document) in
+ * `<AmnesiaProvider>`. The provider owns a multi-scope orchestration object
+ * (`AmnesiaProviderApi`) that lazily creates an independent `Amnesia` store
+ * for each named scope. Components inside can then call:
+ *
+ * - `useAmnesia()` / `useAmnesia(scopeId)` for state + actions
+ * - `useUndoableState(...)` for history-aware single-value state
+ * - `useAmnesiaFocusClaim(scopeId)` to mark a focusable surface as the
+ *   active scope while it owns focus
+ * - `useAmnesiaScopes()` for provider-level orchestration
  */
 
-import { createContext, useContext, useRef, type ReactNode } from "react";
-import { createAmnesiaStore } from "./history";
+import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import {
+    createAmnesiaProviderApi,
+    DEFAULT_SCOPE_ID,
+    type AmnesiaProviderApi,
+    type ScopeOptions,
+} from "./provider-api";
 import type { Amnesia, AmnesiaProviderOptions } from "./types";
 
-const AmnesiaContext = createContext<Amnesia | null>(null);
+const AmnesiaContext = createContext<AmnesiaProviderApi | null>(null);
+
+const noopSubscribe = (): (() => void) => () => undefined;
 
 /**
  * Props for `AmnesiaProvider`. Extends {@link AmnesiaProviderOptions}.
@@ -24,57 +37,63 @@ export interface AmnesiaProviderProps extends Readonly<AmnesiaProviderOptions> {
     children: ReactNode;
 
     /**
-     * Use a pre-built store instead of letting the provider create one.
+     * Use a pre-built store as the default scope's backing instance instead
+     * of letting the provider create one. Other scopes are still created
+     * lazily on demand.
      *
      * Useful for tests and for sharing a store with non-React code (e.g. a
-     * canvas controller). When supplied, all other options are ignored — the
-     * existing store keeps its capacity / coalesce settings.
+     * canvas controller). When supplied, this store keeps its capacity /
+     * coalesce settings.
      */
     store?: Amnesia;
+
+    /**
+     * Per-scope option overrides keyed by scope id. Each entry merges over
+     * the provider-level defaults at scope-creation time. Settings are
+     * frozen once a scope is first accessed.
+     *
+     * @example
+     * ```tsx
+     * <AmnesiaProvider scopes={{ canvas: { capacity: 1000 } }}>
+     *     ...
+     * </AmnesiaProvider>
+     * ```
+     */
+    scopes?: Record<string, ScopeOptions>;
 }
 
 /**
- * Provides an Amnesia history store to descendants.
+ * Provides an Amnesia history orchestration api to descendants.
  *
- * The store is created once on mount. Changes to `capacity`, `coalesceWindowMs`,
- * or `onError` are intentionally ignored after initial mount so the in-flight
- * history is not silently rebuilt with different rules; remount the provider
- * with a `key` to reset.
+ * The api is created once on mount. Provider-level options are read at
+ * scope-creation time (lazy); changing the prop after a scope has been
+ * created has no effect. Remount the provider with a `key` to reset.
  */
 export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
-    const { children, store: providedStore, capacity, coalesceWindowMs, onError } = props;
+    const { children, store: providedStore, capacity, coalesceWindowMs, onError, scopes } = props;
 
-    // Lazy ref so the store is created exactly once per component instance,
+    // Lazy ref so the api is created exactly once per component instance,
     // including under React 18 StrictMode (which double-invokes effect
     // cleanups in dev).
-    const storeRef = useRef<Amnesia | null>(null);
-    if (storeRef.current === null) {
-        if (providedStore) {
-            storeRef.current = providedStore;
-        } else {
-            const opts: AmnesiaProviderOptions = {};
-            if (capacity !== undefined) opts.capacity = capacity;
-            if (coalesceWindowMs !== undefined) opts.coalesceWindowMs = coalesceWindowMs;
-            if (onError !== undefined) opts.onError = onError;
-            storeRef.current = createAmnesiaStore(opts);
-        }
+    const apiRef = useRef<AmnesiaProviderApi | null>(null);
+    if (apiRef.current === null) {
+        apiRef.current = createAmnesiaProviderApi({
+            ...(providedStore !== undefined ? { defaultStore: providedStore } : {}),
+            ...(capacity !== undefined ? { capacity } : {}),
+            ...(coalesceWindowMs !== undefined ? { coalesceWindowMs } : {}),
+            ...(onError !== undefined ? { onError } : {}),
+            ...(scopes !== undefined ? { scopes } : {}),
+        });
     }
 
-    // Note: we intentionally do not auto-dispose the store on unmount.
-    // React 18 StrictMode dev double-invokes effect cleanups, which would
-    // dispose a still-rendered store. The store will be GC'd along with the
-    // provider. Consumers who share a store with non-React code (passing it
-    // via the `store` prop) can call `store.dispose()` themselves when
-    // tearing the React tree down.
-
-    return <AmnesiaContext.Provider value={storeRef.current}>{children}</AmnesiaContext.Provider>;
+    return <AmnesiaContext.Provider value={apiRef.current}>{children}</AmnesiaContext.Provider>;
 }
 
 /**
- * Internal hook returning the raw store, throwing when called outside a
+ * Internal hook returning the provider api, throwing when called outside a
  * provider.
  */
-export function useAmnesiaStore(): Amnesia {
+export function useAmnesiaProviderApi(): AmnesiaProviderApi {
     const ctx = useContext(AmnesiaContext);
     if (!ctx) {
         throw new Error("useAmnesia must be used within an AmnesiaProvider");
@@ -83,9 +102,41 @@ export function useAmnesiaStore(): Amnesia {
 }
 
 /**
- * Returns the store when one is mounted; otherwise `null`. Use this when a
+ * Returns the api when one is mounted; otherwise `null`. Use this when a
  * reusable component should silently degrade outside a provider.
  */
-export function useAmnesiaStoreOptional(): Amnesia | null {
+export function useAmnesiaProviderApiOptional(): AmnesiaProviderApi | null {
     return useContext(AmnesiaContext);
+}
+
+/**
+ * Resolve an `Amnesia` store from the provider api. With an explicit
+ * `scopeId`, pins to that scope and never re-renders on active-scope
+ * changes. Without one, tracks the current active scope and re-renders
+ * when it changes.
+ */
+export function useAmnesiaStore(scopeId?: string): Amnesia {
+    const api = useAmnesiaProviderApi();
+    const subscribe = scopeId !== undefined ? noopSubscribe : api.subscribeActive;
+    const getSnapshot = useMemo(() => {
+        if (scopeId !== undefined) return () => scopeId;
+        return api.getActiveScopeId;
+    }, [api, scopeId]);
+    const resolvedId = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    return api.getScope(resolvedId);
+}
+
+/**
+ * Returns the active-scope-tracking store when a provider is mounted;
+ * otherwise `null`.
+ */
+export function useAmnesiaStoreOptional(): Amnesia | null {
+    const api = useAmnesiaProviderApiOptional();
+    const subscribe = api?.subscribeActive ?? noopSubscribe;
+    const getSnapshot = useMemo(() => {
+        if (!api) return () => DEFAULT_SCOPE_ID;
+        return api.getActiveScopeId;
+    }, [api]);
+    const resolvedId = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    return api ? api.getScope(resolvedId) : null;
 }

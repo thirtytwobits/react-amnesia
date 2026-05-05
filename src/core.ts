@@ -10,12 +10,22 @@
  * `react-amnesia/mnemonic`.
  */
 
-export { AmnesiaProvider, useAmnesiaStore, useAmnesiaStoreOptional } from "./Amnesia/provider";
+export {
+    AmnesiaProvider,
+    useAmnesiaProviderApi,
+    useAmnesiaProviderApiOptional,
+    useAmnesiaStore,
+    useAmnesiaStoreOptional,
+} from "./Amnesia/provider";
 export type { AmnesiaProviderProps } from "./Amnesia/provider";
+export { DEFAULT_SCOPE_ID } from "./Amnesia/provider-api";
+export type { AmnesiaProviderApi, ScopeOptions } from "./Amnesia/provider-api";
 export { useAmnesia } from "./Amnesia/use";
 export type { UseAmnesiaResult } from "./Amnesia/use";
 export { useUndoableState } from "./Amnesia/use-undoable-state";
 export type { UndoableSetter } from "./Amnesia/use-undoable-state";
+export { useAmnesiaFocusClaim, useAmnesiaScopes } from "./Amnesia/use-scopes";
+export type { AmnesiaFocusClaimHandlers, UseAmnesiaScopesResult } from "./Amnesia/use-scopes";
 export { AmnesiaShortcuts } from "./Amnesia/shortcuts";
 export type { AmnesiaShortcutsProps } from "./Amnesia/shortcuts";
 export { createAmnesiaStore } from "./Amnesia/history";

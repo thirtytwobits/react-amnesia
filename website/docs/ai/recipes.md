@@ -347,7 +347,74 @@ Use when:
 
 `do` runs once at push time. Subsequent redos always invoke `command.redo`.
 
-## 11. Custom Error Reporting
+## 11. Multi-Scope Authoring App
+
+```tsx
+import {
+    AmnesiaProvider,
+    AmnesiaShortcuts,
+    useAmnesiaFocusClaim,
+    useAmnesiaScopes,
+    useUndoableState,
+} from "react-amnesia";
+
+function CanvasArea() {
+    const claim = useAmnesiaFocusClaim("canvas");
+    const [strokes, setStrokes] = useUndoableState<string[]>([], {
+        scopeId: "canvas",
+        label: "Add stroke",
+    });
+    return (
+        <section tabIndex={-1} {...claim}>
+            <p>{strokes.length} strokes</p>
+            <button onClick={() => setStrokes((s) => [...s, "stroke"])}>Add stroke</button>
+        </section>
+    );
+}
+
+function PropertyPanel() {
+    const claim = useAmnesiaFocusClaim("props");
+    const [title, setTitle] = useUndoableState("Untitled", {
+        scopeId: "props",
+        coalesceKey: "edit:title",
+    });
+    return (
+        <aside tabIndex={-1} {...claim}>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </aside>
+    );
+}
+
+function Breadcrumb() {
+    const { activeScopeId } = useAmnesiaScopes();
+    return <span>Editing: {activeScopeId}</span>;
+}
+
+export function App() {
+    return (
+        <AmnesiaProvider scopes={{ canvas: { capacity: 1000 }, props: { capacity: 100 } }}>
+            <AmnesiaShortcuts />
+            <Breadcrumb />
+            <CanvasArea />
+            <PropertyPanel />
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- two or more long-lived authoring surfaces share one window
+- Ctrl+Z should affect whichever surface the user just touched
+- different surfaces want different capacities or coalesce settings
+- a "now editing: X" breadcrumb helps the user understand what undo will do
+
+The single `<AmnesiaShortcuts />` routes Ctrl+Z to the active scope. Each
+surface owns its own history; clicking into one shifts the active claim.
+Both `useUndoableState` calls pin to their scope so React state never moves
+between scopes when the user's focus shifts.
+
+## 12. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -371,7 +438,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 12. History Breadcrumb UI
+## 13. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";

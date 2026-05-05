@@ -9,6 +9,27 @@ description: Decision tables for hook choice, coalescing, capacity, persistence 
 Use these tables when the code is "almost obvious" but one wrong undo choice
 would change user behavior after a Ctrl+Z.
 
+## Single Scope vs Multi-Scope
+
+| Need                                                                            | Approach                                                                       |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Whole-app undo on a single document                                             | One `<AmnesiaProvider>`, default scope only — no `scopeId` anywhere needed     |
+| Authoring app with several long-lived surfaces (canvas, property panel, etc.)   | One `<AmnesiaProvider>` with named scopes; `useAmnesiaFocusClaim` per surface  |
+| Multiple documents open in tabs, each with its own history                      | One `<AmnesiaProvider key={documentId}>` per document; remount on switch       |
+| Undoable component library distributed independently                            | Default scope is fine; consumer apps wrap in their own provider                |
+| Modal / overlay that should temporarily steal Ctrl+Z                            | Mount its content with `useAmnesiaFocusClaim("modal")`; release on close       |
+
+## Pin to a Scope vs Track the Active Scope
+
+| Need                                                                            | Hook                                       |
+| ------------------------------------------------------------------------------- | ------------------------------------------ |
+| Component is logically tied to one surface (canvas toolbar, props breadcrumb)   | `useAmnesia("canvas")` — pinned            |
+| Component reflects "whatever the user is editing right now"                     | `useAmnesia()` — tracks active             |
+| `useUndoableState` for a value that lives in a component                        | `{ scopeId: "..." }` — always pinned       |
+| Keyboard shortcut binding for the whole window                                  | `<AmnesiaShortcuts />` — tracks active     |
+| Region-scoped shortcut binding (canvas keyboard ops only)                       | `<AmnesiaShortcuts scopeId="canvas" target={canvasRef.current} />` |
+| Reading the active scope id for breadcrumbs                                     | `useAmnesiaScopes().activeScopeId`         |
+
 ## `useUndoableState` vs `push` vs `useAmnesia`
 
 | Need                                                           | API                                | Why                                                                  |

@@ -11,7 +11,7 @@ guarantees.
 
 ## Core Runtime Invariants
 
-- `useAmnesia(...)`, `useUndoableState(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
 - The history store is in-memory only. Closures are never serialized and the stack does not survive a reload.
 - `Command.redo` and `Command.undo` are required and may be synchronous or return a `Promise<void>`.
 - `Command.do` is optional. When present, it runs once at push time instead of `redo`; it is consumed there and never stored on the entry.
@@ -35,6 +35,19 @@ guarantees.
 - `onError` invocations are deferred until `pendingTokens` is empty so a handler that calls `push` / `undo` / `redo` re-entrantly always sees a quiescent store.
 - The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
 - Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
+
+## Multi-Scope Routing
+
+- A provider owns a `Map<scopeId, Amnesia>`. Named scopes are created lazily on first reference. The reserved `"default"` scope is created on first reference like any other.
+- Scopes are isolated: each has its own past, future, version, epoch, pending set, capacity, and coalesce window. Cross-scope undo / redo is not possible.
+- The provider tracks at most one **focused-child claim** at a time. `claim(scopeId)` sets it; `claim("default")` clears it; `release(scopeId)` clears it only if `scopeId` currently holds it.
+- The active scope is `claim ?? "default"`. `getActiveScopeId()` reads it; `subscribeActive(listener)` notifies on every change.
+- Per-scope option overrides on the provider's `scopes` prop are read at scope-creation time and frozen thereafter. Updating the prop after a scope exists has no effect.
+- `useUndoableState` and `usePersistedUndoableState` pin to an explicit `scopeId` (default `"default"`). They do not track the active claim — React state lives in stable component instances and should not migrate scopes when focus moves.
+- `useAmnesia(scopeId?)` does the opposite: with no arg it tracks the active claim; with an arg it pins.
+- `<AmnesiaShortcuts />` resolves the target scope at handler time so live focus claims always route the chord without a re-render. `<AmnesiaShortcuts scopeId="..." />` pins.
+- `useAmnesiaFocusClaim(scopeId)` returns capture-phase focus / pointer-down handlers. On the component's unmount it releases its claim if it was active.
+- `clearAll()` (from `useAmnesiaScopes()` or the api) iterates every registered scope and calls `clear()`. Per-scope `clear()` (from `useAmnesia(scopeId).clear()`) clears only that scope.
 
 ## Type Sourcing Rules
 

@@ -369,4 +369,12 @@ export interface UseUndoableStateOptions<T> {
      * Equality predicate used to suppress no-op writes. Defaults to `Object.is`.
      */
     equals?: (a: T, b: T) => boolean;
+
+    /**
+     * Scope id to push entries into. Defaults to `"default"`. The hook pins
+     * to this scope rather than tracking the active scope so React state
+     * stays bound to a stable history surface even when the user's focus
+     * (and the active claim) moves elsewhere.
+     */
+    scopeId?: string;
 }

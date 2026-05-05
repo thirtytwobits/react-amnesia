@@ -7,8 +7,17 @@ application history with `react-amnesia`.
 
 ## Quick Rules
 
-- `useAmnesia(...)`, `useUndoableState(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
 - `usePersistedUndoableState(...)` from `react-amnesia/mnemonic` must run inside both an `AmnesiaProvider` and a `MnemonicProvider`.
+- A provider owns multiple **scopes**, each an independent `Amnesia` store. The implicit `"default"` scope exists; named scopes are created lazily on first reference.
+- `useAmnesia()` (no arg) tracks the currently active scope and re-renders when active changes. `useAmnesia("canvas")` pins to a named scope.
+- `useUndoableState(initial, { scopeId })` and `usePersistedUndoableState(...)` pin to a named scope (default `"default"`); they do **not** float to the active claim.
+- `useAmnesiaFocusClaim(scopeId)` returns capture-phase focus / pointer-down handlers that mark a surface as the active claimant. The handlers go on a focusable container element.
+- At most one focused-child claim is held at a time. The most recently claimed scope wins; on claim-component unmount, the active falls back to default if the unmounting component held the claim.
+- `<AmnesiaShortcuts />` routes Ctrl+Z / Cmd+Z to the active scope by default. Pin with `<AmnesiaShortcuts scopeId="canvas" />` to ignore claim changes.
+- `<AmnesiaShortcuts />` calls `event.preventDefault()` whenever the chord matches outside an editable target — even when there is nothing to undo. This is required because async `undo` / `redo` cannot synchronously decide whether the browser's native handler should run.
+- Per-scope option overrides go on the provider: `<AmnesiaProvider scopes={{ canvas: { capacity: 1000 } }}>`. Settings are read at scope-creation time (lazy).
+- `useAmnesiaScopes()` returns `{ activeScopeId, scopeIds, clearAll }` for provider-level UI (breadcrumbs, document-switch reset).
 - The undo stack is **in-memory only**. Closures are not serialized and the history does not survive a reload.
 - To survive reloads, persist the underlying value (e.g. via `react-mnemonic`) and let the history start fresh per session.
 - `Command.redo` and `Command.undo` may be synchronous or return `Promise<void>`. `push` / `undo` / `redo` always return `Promise<number | null>`.
@@ -49,6 +58,7 @@ application history with `react-amnesia`.
 - Reversible Multi-Key Persisted Action
 - Async Command (Server-Backed Setting)
 - Divergent First-Apply With `Command.do`
+- Multi-Scope Authoring App
 - Custom Error Reporting
 - History Breadcrumb UI
 

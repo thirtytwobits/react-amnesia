@@ -145,6 +145,44 @@ Prefer:
 - references (e.g. user id) and resolving sensitive data at runtime
 - structured labels that summarize the action without leaking material
 
+## Routing `useUndoableState` Through The Active Scope
+
+`useUndoableState` always pins to a stable `scopeId`. It does not — and
+should not — float to the active claim. React state is owned by a component
+instance; the history surface it belongs to is a stable property, not a
+focus-driven one.
+
+Wrong:
+
+- attempting to make `useUndoableState` "scope-aware" by reading
+  `useAmnesia().scopeId` inside the call site and passing it as `scopeId`
+- expecting `useUndoableState` to migrate its entries when focus moves
+
+Prefer:
+
+- declare `scopeId` once at the call site as a literal: `useUndoableState(initial, { scopeId: "canvas" })`
+- use `useAmnesia()` (no arg) only for read-only views (toolbar buttons,
+  badges) that should follow the active claim
+
+## Mixing `useAmnesiaFocusClaim` With Inert DOM
+
+`useAmnesiaFocusClaim` returns capture-phase handlers. They only fire when
+focus or pointer-down events actually reach the element they're attached to.
+
+Wrong:
+
+- spreading the handlers onto a `<div>` that has no `tabIndex` and no
+  focusable descendants — focus never enters, so the claim never fires
+- attaching them inside a child but expecting the parent's events to bubble
+  through (capture-phase only catches at the bound element)
+
+Prefer:
+
+- attach the handlers to a focusable container (`tabIndex={-1}` is fine for
+  programmatic focus, `tabIndex={0}` for tab navigation)
+- ensure the container has at least one focusable descendant or accepts
+  pointer-down itself
+
 ## Using `Command.do` When `redo` Alone Would Suffice
 
 `do` exists for the narrow case where first-apply and replay genuinely need
