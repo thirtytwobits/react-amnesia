@@ -23,7 +23,7 @@ export type { AmnesiaProviderApi, ScopeOptions } from "./Amnesia/provider-api";
 export { useAmnesia } from "./Amnesia/use";
 export type { UseAmnesiaResult } from "./Amnesia/use";
 export { useUndoableState } from "./Amnesia/use-undoable-state";
-export type { UndoableSetter } from "./Amnesia/use-undoable-state";
+export type { UndoableReset, UndoableSetter } from "./Amnesia/use-undoable-state";
 export { useAmnesiaFocusClaim, useAmnesiaScopes } from "./Amnesia/use-scopes";
 export type { AmnesiaFocusClaimHandlers, UseAmnesiaScopesResult } from "./Amnesia/use-scopes";
 export { AmnesiaShortcuts } from "./Amnesia/shortcuts";

@@ -145,6 +145,29 @@ Prefer:
 - references (e.g. user id) and resolving sensitive data at runtime
 - structured labels that summarize the action without leaking material
 
+## Treating `useUndoableState`'s `reset` As Scope-Local
+
+`reset` clears the **entire scope** the hook is bound to — not just the
+value owned by this hook. Sibling `useUndoableState` calls and imperative
+`useAmnesia(scopeId).push(...)` entries in the same scope are wiped along
+with it.
+
+Wrong:
+
+- `[a, setA, resetA] = useUndoableState(0)` paired with another
+  `[b, setB] = useUndoableState(0)` in the same component, expecting
+  `resetA()` to leave `b`'s history intact
+- mounting a "discard draft" reset on a default-scope hook in an app that
+  also tracks unrelated reversible actions in the default scope
+
+Prefer:
+
+- pin sensitive history to its own scope: `useUndoableState(0, { scopeId: "draft" })`
+- use `reset` only when the scope-wide wipe is actually what you want
+- if you need to "reset only this value" without touching history, write
+  the inverse as a normal `set(initial)` — but then the operation is
+  itself undoable, and the user can roll back the reset
+
 ## Driving UI From Lifecycle Hooks
 
 Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are for

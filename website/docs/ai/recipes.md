@@ -511,7 +511,45 @@ public snapshot. Telemetry handlers and history-list UI both see the
 sanitized form. A throwing transform safely strips `meta` rather than
 leaking unsanitized values.
 
-## 14. Custom Error Reporting
+## 14. Discard-Changes With `reset`
+
+```tsx
+import { useUndoableState } from "react-amnesia";
+
+export function DraftEditor() {
+    const [draft, setDraft, resetDraft] = useUndoableState("", {
+        label: "Edit draft",
+        coalesceKey: "edit:draft",
+    });
+
+    return (
+        <div>
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} />
+            <button onClick={() => resetDraft()}>Discard changes</button>
+            <button onClick={() => resetDraft(loadServerTemplate())}>Load template</button>
+        </div>
+    );
+}
+
+function loadServerTemplate(): string {
+    return "Subject: …\n\nDear …";
+}
+```
+
+Use when:
+
+- the UI needs an explicit "throw away the work I did" button
+- "load preset" / "load template" should snap to a known starting value
+  rather than appearing in the undo stack
+- the rest of the surrounding scope's history should also be wiped (a
+  fresh-document UX)
+
+`reset()` clears the history scope synchronously and writes the new value
+in the same microtask. There is no entry to undo back to the pre-reset
+state — that is the point. If you want the discard to itself be undoable,
+push a normal command instead.
+
+## 15. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -535,7 +573,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 15. History Breadcrumb UI
+## 16. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";

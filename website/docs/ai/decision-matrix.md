@@ -50,6 +50,19 @@ would change user behavior after a Ctrl+Z.
 | Redact secrets / PII before they leave the store                                | `metaTransform`                                         |
 | Need to fire side effects synchronously with the mutation                       | NOT a hook — wrap the mutation; hooks are post-notify   |
 
+## Reset / Discard / Remove
+
+| Need                                                                            | API                                                |
+| ------------------------------------------------------------------------------- | -------------------------------------------------- |
+| "Discard changes" button (snap back to a stable starting value)                 | `useUndoableState`'s `reset()`                     |
+| "Load preset" or "load template" (set a specific value, drop history)           | `useUndoableState`'s `reset(preset)`               |
+| Lazily compute the discard-target value at click time                           | `useUndoableState`'s `reset(() => compute())`      |
+| Whole-scope reset triggered from elsewhere (toolbar button, route change)       | `useAmnesiaScopes().clear(scopeId)`                |
+| Clear every scope (document switch, logout)                                     | `useAmnesiaScopes().clear()` (no arg)              |
+| Restore persisted defaultValue and wipe history                                 | `usePersistedUndoableState().reset()`              |
+| Set a specific persisted value and wipe history                                 | `usePersistedUndoableState().reset(value)`         |
+| Delete persisted key entirely (next read = defaultValue) and wipe history       | `usePersistedUndoableState().remove()`             |
+
 ## `transaction` vs Many `push`es
 
 | Need                                                                            | Approach                                       |

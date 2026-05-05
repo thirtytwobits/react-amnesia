@@ -18,26 +18,47 @@ import type { UseUndoableStateOptions } from "./types";
 export type UndoableSetter<T> = (next: T | ((current: T) => T)) => void;
 
 /**
+ * Reset accepted by `useUndoableState`. Clears the bound scope's history
+ * (past + future) and overwrites the value.
+ *
+ * - `reset()` — restore the value captured on first render and clear history.
+ * - `reset(next)` — set the value to `next` and clear history.
+ * - `reset(() => next)` — same as `reset(next)`, with a lazy factory.
+ *
+ * The reset itself is **not undoable**: it does not push an entry, and the
+ * surrounding scope is wiped entirely so prior entries cannot be replayed.
+ */
+export type UndoableReset<T> = (next?: T | (() => T)) => void;
+
+/**
  * History-aware analogue of `useState`. Each call to the setter pushes a
  * `redo`/`undo` pair onto the surrounding Amnesia store so Ctrl+Z restores
  * the previous value.
  *
  * The hook owns the underlying React state, so undo/redo work entirely
- * through this hook's setter — no external store required. The setter
- * reference is stable across renders.
+ * through this hook's setter — no external store required. The setter and
+ * reset references are stable across renders.
  *
  * @example
  * ```tsx
- * const [title, setTitle] = useUndoableState("Untitled", {
+ * const [title, setTitle, resetTitle] = useUndoableState("Untitled", {
  *     label: "Edit title",
  *     coalesceKey: "edit:title",
  * });
+ * // ...
+ * resetTitle();              // restore "Untitled" and clear history
+ * resetTitle("New document"); // overwrite, clear history
  * ```
+ *
+ * `reset` clears the **entire scope** the hook is bound to — including
+ * entries pushed by other hooks or imperative `useAmnesia().push(...)`
+ * calls in the same scope. Pin sensitive history to its own `scopeId`
+ * when that boundary matters.
  */
 export function useUndoableState<T>(
     initial: T | (() => T),
     options: UseUndoableStateOptions<T> = {},
-): [T, UndoableSetter<T>] {
+): [T, UndoableSetter<T>, UndoableReset<T>] {
     // Pin to an explicit scope (default = "default") rather than tracking
     // the active scope. React state lives in this component instance, so
     // the history surface it belongs to is a stable property — not driven
@@ -52,6 +73,12 @@ export function useUndoableState<T>(
 
     const optionsRef = useRef(options);
     optionsRef.current = options;
+
+    // Capture the resolved initial value on first render. Subsequent renders
+    // ignore prop changes to `initial`, matching React's `useState` lazy-init
+    // contract; `reset()` with no argument always returns to this captured
+    // value.
+    const initialRef = useRef<T>(value);
 
     const set = useCallback<UndoableSetter<T>>(
         (next) => {
@@ -88,5 +115,19 @@ export function useUndoableState<T>(
         [store],
     );
 
-    return [value, set];
+    const reset = useCallback<UndoableReset<T>>(
+        (next) => {
+            const resolved =
+                next === undefined ? initialRef.current : typeof next === "function" ? (next as () => T)() : next;
+            // Clear the bound scope first so the post-reset value cannot
+            // race a stale undo. `clear()` is synchronous; the setValue
+            // below lands in the same microtask.
+            store.clear();
+            valueRef.current = resolved;
+            setValue(resolved);
+        },
+        [store],
+    );
+
+    return [value, set, reset];
 }

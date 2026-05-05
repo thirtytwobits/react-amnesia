@@ -19,7 +19,7 @@ import { useCallback, useRef } from "react";
 import { useMnemonicKey, type UseMnemonicKeyOptions } from "react-mnemonic";
 import { useAmnesiaScope } from "./Amnesia/provider";
 import { DEFAULT_SCOPE_ID } from "./Amnesia/provider-api";
-import type { UndoableSetter } from "./Amnesia/use-undoable-state";
+import type { UndoableReset, UndoableSetter } from "./Amnesia/use-undoable-state";
 import type { UseUndoableStateOptions } from "./Amnesia/types";
 
 /**
@@ -34,16 +34,24 @@ export type UsePersistedUndoableStateOptions<T> = UseMnemonicKeyOptions<T> & Use
 /**
  * Result of {@link usePersistedUndoableState}.
  *
- * `set` records each change as an undo entry. `reset` and `remove` are
- * passed through from `useMnemonicKey` and **bypass the undo stack** —
- * they represent intentional "wipe" operations whose inverse usually is
- * not meaningful. Wrap them yourself with `useAmnesia().push(...)` if you
- * need them to be undoable in your app.
+ * `set` records each change as an undo entry.
+ *
+ * `reset(next?)` is **composite**: it clears the bound Amnesia scope's
+ * history AND restores the persisted value via `react-mnemonic`. With no
+ * argument it falls back to `mnemonic.reset()` (which writes the
+ * `defaultValue` back to storage); with an explicit `next` it calls
+ * `mnemonic.set(next)` instead. Either way the past + future stacks are
+ * dropped — a reset is intentionally not undoable.
+ *
+ * `remove()` is also composite: it removes the persisted key entirely
+ * (next read returns `defaultValue`) AND clears the bound Amnesia scope.
+ * Stale undo entries that would try to restore a now-removed key are
+ * dropped as part of the operation.
  */
 export interface UsePersistedUndoableStateResult<T> {
     value: T;
     set: UndoableSetter<T>;
-    reset: () => void;
+    reset: UndoableReset<T>;
     remove: () => void;
 }
 
@@ -83,6 +91,12 @@ export function usePersistedUndoableState<T>(
     const mnemonicSetRef = useRef(mnemonic.set);
     mnemonicSetRef.current = mnemonic.set;
 
+    const mnemonicResetRef = useRef(mnemonic.reset);
+    mnemonicResetRef.current = mnemonic.reset;
+
+    const mnemonicRemoveRef = useRef(mnemonic.remove);
+    mnemonicRemoveRef.current = mnemonic.remove;
+
     const set = useCallback<UndoableSetter<T>>(
         (next) => {
             const previous = valueRef.current;
@@ -113,5 +127,26 @@ export function usePersistedUndoableState<T>(
         [store],
     );
 
-    return { value: mnemonic.value, set, reset: mnemonic.reset, remove: mnemonic.remove };
+    const reset = useCallback<UndoableReset<T>>(
+        (next) => {
+            // Clear the history scope first so an intermediate stale undo
+            // cannot race with the value rewrite.
+            store.clear();
+            if (next === undefined) {
+                mnemonicResetRef.current();
+                return;
+            }
+            const resolved = typeof next === "function" ? (next as () => T)() : next;
+            valueRef.current = resolved;
+            mnemonicSetRef.current(resolved);
+        },
+        [store],
+    );
+
+    const remove = useCallback<() => void>(() => {
+        store.clear();
+        mnemonicRemoveRef.current();
+    }, [store]);
+
+    return { value: mnemonic.value, set, reset, remove };
 }

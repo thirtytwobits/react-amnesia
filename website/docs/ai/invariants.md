@@ -36,6 +36,16 @@ guarantees.
 - The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
 - Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
 
+## Reset Semantics
+
+- `useUndoableState` returns `[value, set, reset]`. The reset reference is stable across renders.
+- `reset(next?)` resolves the new value as: `next` (or `next()` for a factory) when supplied, otherwise the value captured on first render. Strict-mode double-invocation does not change the captured initial — it is set once via `useState`'s initializer contract.
+- `reset` calls `store.clear()` on the bound scope FIRST, then writes the resolved value. The clear bumps `epoch` so any in-flight async op stales out cleanly; the rewrite lands in the same microtask.
+- `reset` does not push an entry. It is intentionally not undoable — the wipe is the point.
+- `useUndoableState` clears the **entire scope**, not just the value owned by this hook. Sibling hooks and imperative `useAmnesia(scopeId).push(...)` calls in the same scope are also dropped.
+- `usePersistedUndoableState`'s `reset(next?)` is composite: scope clear THEN either `mnemonic.reset()` (no arg) or `mnemonic.set(next)` (with arg). The persistence layer's defaultValue is whatever was passed to `useMnemonicKey`.
+- `usePersistedUndoableState`'s `remove()` is composite: scope clear THEN `mnemonic.remove()` (deletes the key from storage; subsequent reads return `defaultValue`).
+
 ## Lifecycle Hooks
 
 - Provider options accept `onPush(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
