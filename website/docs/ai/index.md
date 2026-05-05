@@ -57,6 +57,7 @@ Read these pages in order when context is tight:
 
 ## Quick Rules
 
+- React 18 or 19 are supported peers (`^18.0.0 || ^19.0.0`); both are exercised in CI under `<StrictMode>`.
 - `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
 - `usePersistedUndoableState(...)` from `react-amnesia/mnemonic` must run inside both an `AmnesiaProvider` and a `MnemonicProvider`.
 - A provider owns multiple **scopes**, each an independent `Amnesia` store. The implicit `"default"` scope exists; named scopes are created lazily on first reference.

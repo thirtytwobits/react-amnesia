@@ -16,7 +16,7 @@
  * - `useAmnesiaScopes()` for provider-level orchestration
  */
 
-import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import {
     createAmnesiaProviderApi,
     DEFAULT_SCOPE_ID,

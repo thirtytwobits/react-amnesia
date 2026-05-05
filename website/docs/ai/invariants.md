@@ -9,6 +9,12 @@ description: Deterministic runtime guarantees for provider scope, push, undo, re
 This page is the shortest authoritative statement of what `react-amnesia`
 guarantees.
 
+## Supported React Versions
+
+- React `^18.0.0 || ^19.0.0`. The full test suite runs under React 18.3 and React 19.2.
+- Component tests are wrapped in `<StrictMode>` by default, so every component path exercises React's dev double-mount cycle.
+- `AmnesiaProvider` does not auto-dispose its store on unmount. This is intentional: auto-dispose conflicts with StrictMode's simulated effect cleanup. Call `store.dispose()` manually when sharing a store with non-React code.
+
 ## Core Runtime Invariants
 
 - `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.

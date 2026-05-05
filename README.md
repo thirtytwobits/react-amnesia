@@ -21,7 +21,7 @@ also survive page reloads) but does not require it.
 npm install react-amnesia
 ```
 
-React 18 or later is required.
+React 18 or 19 is required (`^18.0.0 || ^19.0.0`). The library is tested against both versions under `<StrictMode>`.
 
 ## Quick start
 

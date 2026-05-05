@@ -2,7 +2,7 @@
 // Copyright Scott Dixon
 
 import { useEffect, useRef } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "../test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { AmnesiaProvider } from "./provider";
