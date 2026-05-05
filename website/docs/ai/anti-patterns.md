@@ -145,6 +145,74 @@ Prefer:
 - references (e.g. user id) and resolving sensitive data at runtime
 - structured labels that summarize the action without leaking material
 
+## Calling `store.push` From Inside Transaction `work`
+
+The store is single-flight while a transaction is in flight. A bare
+`store.push(...)` from inside the work function hits busy and is dropped
+silently from the user's perspective.
+
+Wrong:
+
+```tsx
+await transaction("preset", async (tx) => {
+    await tx.push({ redo, undo });
+    // BAD — second mutation is lost.
+    await store.push({ redo, undo });
+});
+```
+
+Prefer:
+
+- always use `tx.push(...)` inside the work function so the mutation joins
+  the buffer
+- if you really need a "do this on its own outside the transaction" effect,
+  schedule it after the transaction resolves
+
+## Holding `tx` Outside The Work Function
+
+The `TransactionApi` handle is closed when the surrounding `transaction(...)`
+call resolves. Calls to `tx.push` / `tx.label` after that point throw.
+
+Wrong:
+
+```tsx
+let captured;
+await transaction((tx) => {
+    captured = tx;
+});
+await captured.push(...); // throws
+```
+
+Prefer:
+
+- treat `tx` as a borrow whose lifetime is the work function's call frame
+- start a fresh transaction for the next batch of mutations
+
+## Modeling Recoverable Errors As Transaction Throws
+
+A throw inside `work` rolls back **every** buffered undo. If only some of
+the work failed, you may be undoing successful steps too.
+
+Wrong:
+
+```tsx
+await transaction(async (tx) => {
+    await tx.push(saveMetadata);    // succeeded
+    try {
+        await tx.push(uploadAvatar); // failed
+    } catch {
+        // swallow — but tx is already aware of the failure
+        throw new Error("avatar failed");
+    }
+});
+```
+
+Prefer:
+
+- decide up-front whether each step is part of the atomic bundle
+- if a step is genuinely optional, fan it out as a separate `push` after the
+  transaction commits, with its own retry / undo semantics
+
 ## Routing `useUndoableState` Through The Active Scope
 
 `useUndoableState` always pins to a stable `scopeId`. It does not — and

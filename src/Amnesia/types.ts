@@ -208,21 +208,26 @@ export type AmnesiaErrorHandler = (error: unknown, context: AmnesiaErrorContext)
  *
  * Phases:
  *
- * - `"push"` — the command's `redo` threw on initial application. The entry
- *   is **not** added to the stack; the original error is also re-thrown to
- *   the caller of `push`.
+ * - `"push"` — the command's `redo` (or transaction's `work`) threw on
+ *   initial application. The entry is **not** added to the stack; the
+ *   original error is also re-thrown to the caller.
  * - `"undo"` / `"redo"` — the entry's handler threw. The entry stays on its
  *   current stack so the application can retry. `recoverable: true`.
  * - `"busy"` — the call arrived while another op was in flight and was
  *   dropped. `recoverable: true` (the caller can retry after `pending`
  *   becomes false).
  * - `"stale"` — an in-flight async op detected that `clear()` (or
- *   provider unmount) ran during its `await`. The entry is dropped.
+ *   `dispose()`) ran during its `await`. The entry is dropped.
+ *   `recoverable: false`.
+ * - `"rollback"` — a buffered `undo` threw while a transaction was rolling
+ *   back after its `work` rejected or stale-dropped. One error per failing
+ *   undo. The application's state may be partially restored; the original
+ *   `work` rejection (when applicable) still propagates to the caller.
  *   `recoverable: false`.
  */
 export interface AmnesiaErrorContext {
     /** Which lifecycle phase produced the error. */
-    phase: "push" | "undo" | "redo" | "busy" | "stale";
+    phase: "push" | "undo" | "redo" | "busy" | "stale" | "rollback";
     /** The entry id involved, when known. */
     entryId?: number;
     /** Label of the involved entry, when known. */
@@ -262,6 +267,33 @@ export interface AmnesiaProviderOptions {
      * {@link AmnesiaErrorHandler}.
      */
     onError?: AmnesiaErrorHandler;
+}
+
+/**
+ * Per-transaction handle passed to a transaction's `work` function.
+ *
+ * `tx.push(command)` runs `command.do ?? command.redo` immediately (so the
+ * application's state mutates as the work progresses) and buffers
+ * `command.redo` and `command.undo` for the composite entry that the
+ * transaction will commit on success. `tx.label(text)` overrides the
+ * composite's label after the fact, which is useful when the right label
+ * depends on what the work actually changed.
+ *
+ * The handle is **closed** after the surrounding `transaction(...)` call
+ * resolves. Calling `tx.push` or `tx.label` past that point throws.
+ */
+export interface TransactionApi {
+    /**
+     * Apply a command and add it to the transaction's buffer. The command's
+     * `do ?? redo` runs immediately. Returns a Promise that resolves once
+     * any async first-apply has settled.
+     */
+    push: (command: Command) => Promise<void>;
+
+    /**
+     * Override the composite entry's label. Last write wins.
+     */
+    label: (text: string) => void;
 }
 
 /**
@@ -323,6 +355,43 @@ export interface Amnesia {
      * in-flight async op resolves to a stale-drop on resume.
      */
     clear: () => void;
+
+    /**
+     * Run a series of pushes as a single undoable composite entry.
+     *
+     * The `work` function receives a `TransactionApi` handle. Each
+     * `tx.push(command)` runs the command's first-apply immediately and
+     * buffers the `redo` / `undo` pair. On successful resolution of `work`,
+     * a single composite entry is appended to the past stack whose `redo`
+     * re-runs all buffered redos in order and whose `undo` runs all buffered
+     * undos in reverse.
+     *
+     * Behavior:
+     *
+     * - **Sync work**: commits a single notification at the end. Subscribers
+     *   never observe an intermediate `pending: true` state.
+     * - **Async work**: notifies once on entry (`pending: true`) and once on
+     *   commit (`pending: false`).
+     * - **Throw / reject**: every buffered `undo` runs in reverse to restore
+     *   application state. The original error is re-thrown to the caller.
+     *   Each rollback failure surfaces as `onError({ phase: "rollback" })`.
+     * - **Stale**: if `clear()` or `dispose()` runs during an async work,
+     *   the transaction rolls back its buffered undos and resolves to
+     *   `null` with `onError({ phase: "stale" })`.
+     * - **Empty**: if `work` resolves without calling `tx.push`, no entry is
+     *   committed and the call resolves to `null`.
+     * - **Nested**: a `transaction(...)` call inside another transaction's
+     *   `work` flattens into the outer. Its `label` argument is ignored
+     *   (the outermost label or any `tx.label(...)` call wins) and it
+     *   resolves to `null` immediately after its own work finishes.
+     *
+     * The composite entry is never coalesced with stack neighbors; the
+     * transaction is always its own entry.
+     */
+    transaction: {
+        (work: (tx: TransactionApi) => void | Promise<void>): Promise<number | null>;
+        (label: string, work: (tx: TransactionApi) => void | Promise<void>): Promise<number | null>;
+    };
 
     /**
      * Tear down the store. Bumps `epoch` and empties the pending set so

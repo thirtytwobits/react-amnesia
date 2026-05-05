@@ -39,6 +39,17 @@ would change user behavior after a Ctrl+Z.
 | Reading the stack for UI (history list, breadcrumb, badges)    | `useAmnesia()` snapshot            | Already memo-stable; no need to subscribe manually                   |
 | Direct programmatic undo / redo (toolbar buttons, menu items)  | `useAmnesia().undo()` / `.redo()`  | Resolves to the affected entry id, or `null` when the stack was empty |
 
+## `transaction` vs Many `push`es
+
+| Need                                                                            | Approach                                       |
+| ------------------------------------------------------------------------------- | ---------------------------------------------- |
+| One user action mutates several places; one Ctrl+Z should undo all of them      | `useAmnesia().transaction("Apply preset", ...)` |
+| Each mutation should remain individually undoable                               | Several `push(...)` calls                       |
+| Multi-step async work (call API, then update UI, then write to disk) atomic     | `transaction(async (tx) => { ... })`           |
+| Handlers might fail; want all-or-nothing                                        | `transaction` — rollback runs on throw         |
+| Want a "dry-run, then commit if happy" pattern                                  | `transaction` and throw to abort                |
+| Just one mutation                                                               | Plain `push` — transaction would only add notify-pair overhead |
+
 ## `Command.do` vs `redo`-only
 
 | Situation                                                                            | Recommendation                       |

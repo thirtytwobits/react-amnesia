@@ -7,7 +7,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { useAmnesiaProviderApi, useAmnesiaScope } from "./provider";
-import type { Amnesia, AmnesiaState, Command, PushOptions } from "./types";
+import type { Amnesia, AmnesiaState, Command, PushOptions, TransactionApi } from "./types";
 
 /**
  * Hook returning the current Amnesia state plus stable action callbacks.
@@ -29,6 +29,14 @@ export interface UseAmnesiaResult extends AmnesiaState {
     undo: () => Promise<number | null>;
     /** Redo the most recent future entry. See {@link Amnesia.redo}. */
     redo: () => Promise<number | null>;
+    /**
+     * Run a series of pushes as a single composite entry. See
+     * {@link Amnesia.transaction}.
+     */
+    transaction: {
+        (work: (tx: TransactionApi) => void | Promise<void>): Promise<number | null>;
+        (label: string, work: (tx: TransactionApi) => void | Promise<void>): Promise<number | null>;
+    };
     /** Drop both stacks of this scope. See {@link Amnesia.clear}. */
     clear: () => void;
 }
@@ -56,6 +64,14 @@ export function useAmnesia(scopeId?: string): UseAmnesiaResult {
     const undo = useCallback<Amnesia["undo"]>(() => store.undo(), [store]);
     const redo = useCallback<Amnesia["redo"]>(() => store.redo(), [store]);
     const clear = useCallback<Amnesia["clear"]>(() => store.clear(), [store]);
+    const transaction = useCallback<Amnesia["transaction"]>(
+        (
+            labelOrWork: string | ((tx: TransactionApi) => void | Promise<void>),
+            maybeWork?: (tx: TransactionApi) => void | Promise<void>,
+        ): Promise<number | null> =>
+            (store.transaction as (...args: unknown[]) => Promise<number | null>)(labelOrWork, maybeWork),
+        [store],
+    );
 
     // Resolve the scope id we're currently bound to. When `scopeId` is
     // omitted the store may be the active scope's; in that case we need to
@@ -74,6 +90,7 @@ export function useAmnesia(scopeId?: string): UseAmnesiaResult {
         push,
         undo,
         redo,
+        transaction,
         clear,
     };
 }

@@ -36,6 +36,20 @@ guarantees.
 - The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
 - Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
 
+## Transactions
+
+- `transaction(label?, work)` is per-scope. The store is single-flight while the transaction runs; concurrent `push` / `undo` / `redo` from outside the work function hit `phase: "busy"` and resolve to `null`.
+- `tx.push(command)` invokes `command.do ?? command.redo` synchronously (or awaits if it returns a Promise) and appends `command.redo` and `command.undo` to the buffer. The composite entry stores `redo` (not `do`) for replay.
+- The composite's `redo` runs every buffered `redo` in original order; its `undo` runs every buffered `undo` in **reverse** order. Both await async handlers.
+- Sync `work` commits with a single notify (no observable `pending: true`). Async `work` notifies twice: at await-start and at commit / rollback / stale-resolution.
+- A synchronous throw from `work` rolls back synchronously then re-throws. An asynchronous rejection rolls back asynchronously then re-throws. `clear()` / `dispose()` during the await rolls back and resolves to `null` with `phase: "stale"`.
+- Per-buffered-undo failures during rollback fire `phase: "rollback"` errors, one per failure. The original `work` rejection (when applicable) still propagates to the caller.
+- `tx.push` and `tx.label` throw synchronously when called after the surrounding `transaction(...)` resolves.
+- Nested `transaction(...)` calls flatten: the inner call's `label` is ignored, its `work` runs against the outer's buffer, and it resolves to `null` immediately when its own work completes. There is no separate nested commit.
+- The composite entry's `coalesceKey` is undefined; it never coalesces with neighbors. Individual `tx.push` calls do not coalesce within the buffer either.
+- `transaction(...)` on a disposed store resolves to `null` without invoking `work`.
+- `transaction(label)` with no `work` function rejects synchronously with a `TypeError`.
+
 ## Multi-Scope Routing
 
 - A provider owns a `Map<scopeId, Amnesia>`. Named scopes are created lazily on first reference. The reserved `"default"` scope is created on first reference like any other.

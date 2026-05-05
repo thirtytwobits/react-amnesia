@@ -21,6 +21,10 @@ When adding undoable behavior to this repository or to example apps built with
 - `Command.redo` and `Command.undo` may be synchronous or return `Promise<void>`. `push` / `undo` / `redo` always return `Promise<number | null>`.
 - `push({ redo, undo, label })` calls `redo()` once on insertion. Pass `{ applied: true }` when the call site has already mutated state.
 - `Command.do` is optional. When supplied, it runs once at push time instead of `redo` and is **not stored** on the entry — every subsequent redo invokes `command.redo`. Use `do` when first-apply requires setup that re-apply does not.
+- `useAmnesia(scopeId?).transaction(label?, work)` collapses N pushes into one composite entry. `tx.push(command)` runs `command.do ?? command.redo` immediately and buffers `command.redo` / `command.undo`. On commit the past stack gains exactly one composite entry whose redo/undo replay all buffered handlers in order / reverse order.
+- A throw inside a transaction's `work` rolls back every buffered undo in reverse and re-throws to the caller. `clear()` / `dispose()` during the await stales the transaction and rolls back instead. Empty transactions resolve to `null` with no entry.
+- Nested `transaction(...)` calls flatten into the outermost; the nested `label` argument is ignored, the outermost label or any `tx.label(...)` call wins.
+- Composite entries never coalesce with stack neighbors. Inside a transaction, individual `tx.push` calls do not coalesce with each other either.
 - A new `push` clears the redo (future) stack. There is no branching in v0.
 - Use `coalesceKey` (e.g. `"edit:title"`) for keystroke or drag bursts so a single Ctrl+Z reverts the whole burst. Coalescing across async commands is fragile — recommend against it.
 - Two pushes coalesce only when they share the same non-empty `coalesceKey` and arrive within `coalesceWindowMs` of each other.

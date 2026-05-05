@@ -38,5 +38,6 @@ export type {
     Command,
     HistoryEntry,
     PushOptions,
+    TransactionApi,
     UseUndoableStateOptions,
 } from "./Amnesia/types";

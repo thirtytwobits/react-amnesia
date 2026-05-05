@@ -31,6 +31,7 @@ import type {
     Command,
     HistoryEntry,
     PushOptions,
+    TransactionApi,
 } from "./types";
 
 interface InternalEntry extends HistoryEntry {
@@ -63,6 +64,14 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
     let nextId = 1;
     let disposed = false;
     const pendingTokens = new Set<symbol>();
+
+    interface TransactionState {
+        label: string | undefined;
+        bufferedRedos: Array<() => void | Promise<void>>;
+        bufferedUndos: Array<() => void | Promise<void>>;
+        closed: boolean;
+    }
+    let activeTransaction: TransactionState | null = null;
     let snapshot: AmnesiaState = freezeSnapshot(past, future, version, epoch, pendingTokens);
     const listeners = new Set<() => void>();
 
@@ -316,6 +325,204 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         );
     };
 
+    /**
+     * Run an array of undo handlers in reverse order. Used both for
+     * mid-transaction rollback and for the composite entry's `undo` after
+     * commit. Failures are reported individually as `phase: "rollback"` and
+     * do not stop subsequent undos from running — best-effort recovery.
+     */
+    const runUndosInReverse = async (
+        undos: ReadonlyArray<() => void | Promise<void>>,
+    ): Promise<void> => {
+        for (let i = undos.length - 1; i >= 0; i--) {
+            try {
+                const result = undos[i]!();
+                if (isThenable(result)) await result;
+            } catch (error) {
+                scheduleError(error, buildErrorContext("rollback", false));
+            }
+        }
+    };
+
+    const makeTxApi = (state: TransactionState): TransactionApi => ({
+        push: async (command: Command): Promise<void> => {
+            if (state.closed) {
+                throw new Error(
+                    "[Amnesia] Cannot call tx.push after the transaction has resolved",
+                );
+            }
+            // First-apply prefers `command.do` (Workstream B). Run it now so
+            // application state mutates as the work progresses; subsequent
+            // pushes inside the transaction can read the updated state.
+            const handler = command.do ?? command.redo;
+            const raw = handler();
+            if (isThenable(raw)) await raw;
+            // The buffer stores `redo` (not `do`) so the composite's redo
+            // path is replay-correct.
+            state.bufferedRedos.push(command.redo);
+            state.bufferedUndos.push(command.undo);
+        },
+        label: (text: string): void => {
+            if (state.closed) {
+                throw new Error(
+                    "[Amnesia] Cannot call tx.label after the transaction has resolved",
+                );
+            }
+            state.label = text;
+        },
+    });
+
+    /**
+     * Build the composite entry from a transaction's buffer and append it
+     * to the past stack. Returns the new entry's id, or `null` for an empty
+     * transaction.
+     */
+    const commitTransaction = (state: TransactionState, token: symbol): number | null => {
+        if (state.bufferedRedos.length === 0) {
+            // Empty transaction — release the token, notify, no entry.
+            pendingTokens.delete(token);
+            notify();
+            return null;
+        }
+
+        // Capture the buffers by reference. The composite's redo/undo run
+        // them in their original order on every subsequent redo / reverse
+        // order on every subsequent undo.
+        const redos = state.bufferedRedos;
+        const undos = state.bufferedUndos;
+
+        const compositeRedo = async (): Promise<void> => {
+            for (const handler of redos) {
+                const result = handler();
+                if (isThenable(result)) await result;
+            }
+        };
+        const compositeUndo = async (): Promise<void> => {
+            for (let i = undos.length - 1; i >= 0; i--) {
+                const result = undos[i]!();
+                if (isThenable(result)) await result;
+            }
+        };
+
+        const entry: InternalEntry = {
+            id: nextId++,
+            pushedAt: nowMs(),
+            redo: compositeRedo,
+            undo: compositeUndo,
+            ...(state.label !== undefined ? { label: state.label } : {}),
+        };
+        past = [...past, entry];
+        if (past.length > capacity) {
+            past = past.slice(past.length - capacity);
+        }
+        future = [];
+        version += 1;
+        pendingTokens.delete(token);
+        notify();
+        return entry.id;
+    };
+
+    const transaction: Amnesia["transaction"] = (
+        labelOrWork:
+            | string
+            | ((tx: TransactionApi) => void | Promise<void>),
+        maybeWork?: (tx: TransactionApi) => void | Promise<void>,
+    ): Promise<number | null> => {
+        const label = typeof labelOrWork === "string" ? labelOrWork : undefined;
+        const work = (typeof labelOrWork === "function" ? labelOrWork : maybeWork) as
+            | ((tx: TransactionApi) => void | Promise<void>)
+            | undefined;
+        if (typeof work !== "function") {
+            return Promise.reject(new TypeError("[Amnesia] transaction(): work function is required"));
+        }
+        return runTransaction(label, work);
+    };
+
+    async function runTransaction(
+        label: string | undefined,
+        work: (tx: TransactionApi) => void | Promise<void>,
+    ): Promise<number | null> {
+        if (disposed) return null;
+
+        // Nested call: flatten into the existing transaction. The nested
+        // `label` parameter is intentionally ignored — the outermost
+        // `transaction(...)` argument or any `tx.label(...)` call wins.
+        if (activeTransaction !== null) {
+            const txApi = makeTxApi(activeTransaction);
+            const inner = work(txApi);
+            if (isThenable(inner)) await inner;
+            return null;
+        }
+
+        if (pendingTokens.size > 0) {
+            scheduleError(undefined, buildErrorContext("busy", true));
+            return null;
+        }
+
+        const token = Symbol("tx");
+        const epochAtStart = epoch;
+        const state: TransactionState = {
+            label,
+            bufferedRedos: [],
+            bufferedUndos: [],
+            closed: false,
+        };
+
+        activeTransaction = state;
+        pendingTokens.add(token);
+
+        let raw: void | Promise<void>;
+        try {
+            raw = work(makeTxApi(state));
+        } catch (error) {
+            // Synchronous throw from `work` — close, rollback, re-throw.
+            state.closed = true;
+            activeTransaction = null;
+            pendingTokens.delete(token);
+            await runUndosInReverse(state.bufferedUndos);
+            scheduleError(error, buildErrorContext("push", false));
+            throw error;
+        }
+
+        if (!isThenable(raw)) {
+            // Synchronous work — commit immediately, single notify.
+            state.closed = true;
+            activeTransaction = null;
+            return commitTransaction(state, token);
+        }
+
+        // Asynchronous work — announce pending=true before awaiting.
+        notify();
+
+        try {
+            await raw;
+        } catch (error) {
+            state.closed = true;
+            activeTransaction = null;
+            if (epoch === epochAtStart) {
+                pendingTokens.delete(token);
+                notify();
+            }
+            await runUndosInReverse(state.bufferedUndos);
+            scheduleError(error, buildErrorContext("push", false));
+            throw error;
+        }
+
+        // Stale check: did `clear()` / `dispose()` run during the await?
+        if (epoch !== epochAtStart) {
+            state.closed = true;
+            activeTransaction = null;
+            // pendingTokens already cleared by clear() / dispose().
+            await runUndosInReverse(state.bufferedUndos);
+            scheduleError(undefined, buildErrorContext("stale", false));
+            return null;
+        }
+
+        state.closed = true;
+        activeTransaction = null;
+        return commitTransaction(state, token);
+    }
+
     const clear: Amnesia["clear"] = (): void => {
         if (disposed) return;
         const hadPending = pendingTokens.size > 0;
@@ -326,6 +533,11 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         // resume and resolves as a stale-drop without committing.
         epoch += 1;
         pendingTokens.clear();
+        // Detach any in-flight transaction. Its still-suspended await will
+        // notice the epoch bump and run rollback against its captured
+        // state, but later `transaction(...)` calls must not flatten into
+        // an already-doomed transaction.
+        activeTransaction = null;
         version += 1;
         notify();
     };
@@ -338,6 +550,8 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         // by the unmounting provider.
         epoch += 1;
         pendingTokens.clear();
+        // Detach any in-flight transaction; see `clear()` for rationale.
+        activeTransaction = null;
         past = [];
         future = [];
         listeners.clear();
@@ -356,7 +570,7 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
 
     const getSnapshot: Amnesia["getSnapshot"] = () => snapshot;
 
-    return { push, undo, redo, clear, dispose, subscribe, getSnapshot };
+    return { push, undo, redo, transaction, clear, dispose, subscribe, getSnapshot };
 }
 
 function freezeSnapshot(

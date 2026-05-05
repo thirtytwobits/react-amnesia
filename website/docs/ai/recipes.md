@@ -414,7 +414,60 @@ surface owns its own history; clicking into one shifts the active claim.
 Both `useUndoableState` calls pin to their scope so React state never moves
 between scopes when the user's focus shifts.
 
-## 12. Custom Error Reporting
+## 12. Transaction (Multi-Step Composite Entry)
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type Document = { title: string; tags: string[]; updatedAt: number };
+type DocStore = {
+    setTitle: (next: string) => void;
+    addTag: (tag: string) => void;
+    setUpdatedAt: (ms: number) => void;
+    snapshot: () => Document;
+};
+
+export function ApplyPresetButton({ store: doc }: { store: DocStore }) {
+    const { transaction, pending } = useAmnesia();
+
+    const apply = async () => {
+        const before = doc.snapshot();
+        await transaction("Apply preset", async (tx) => {
+            await tx.push({
+                redo: () => doc.setTitle("Untitled (preset)"),
+                undo: () => doc.setTitle(before.title),
+            });
+            await tx.push({
+                redo: () => doc.addTag("preset"),
+                undo: () => doc.setTitle(before.title), // restored once via title path
+            });
+            await tx.push({
+                redo: () => doc.setUpdatedAt(Date.now()),
+                undo: () => doc.setUpdatedAt(before.updatedAt),
+            });
+        });
+    };
+
+    return (
+        <button disabled={pending} onClick={apply}>
+            Apply preset
+        </button>
+    );
+}
+```
+
+Use when:
+
+- one user-visible action touches several pieces of state
+- a single Ctrl+Z should reverse the whole bundle
+- some of the steps may be async (server calls, IndexedDB writes)
+- the user expects the action to be atomic — partial application is wrong
+
+If the `work` function throws or rejects, every buffered undo runs in
+reverse before the rejection propagates. `clear()` or `dispose()` during the
+await stales the transaction the same way.
+
+## 13. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -438,7 +491,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 13. History Breadcrumb UI
+## 14. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
