@@ -26,8 +26,8 @@ import type {
     Amnesia,
     AmnesiaErrorContext,
     AmnesiaErrorHandler,
-    AmnesiaProviderOptions,
     AmnesiaState,
+    AmnesiaStoreOptions,
     Command,
     HistoryEntry,
     PushOptions,
@@ -52,10 +52,15 @@ type OperationPhase = "push" | "undo" | "redo";
 /**
  * Build a new Amnesia store instance.
  */
-export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesia {
+export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     const capacity = Math.max(1, options.capacity ?? DEFAULT_CAPACITY);
     const coalesceWindowMs = Math.max(0, options.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS);
     const onError = options.onError ?? defaultOnError;
+    const onPushHook = options.onPush;
+    const onUndoHook = options.onUndo;
+    const onRedoHook = options.onRedo;
+    const onClearHook = options.onClear;
+    const metaTransform = options.metaTransform;
 
     let past: InternalEntry[] = [];
     let future: InternalEntry[] = [];
@@ -72,7 +77,7 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         closed: boolean;
     }
     let activeTransaction: TransactionState | null = null;
-    let snapshot: AmnesiaState = freezeSnapshot(past, future, version, epoch, pendingTokens);
+    let snapshot: AmnesiaState = freezeSnapshot(past, future, version, epoch, pendingTokens, metaTransform);
     const listeners = new Set<() => void>();
 
     // Deferred onError queue. Errors are drained only when `pendingTokens` is
@@ -88,6 +93,18 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
     //   itself causes another op to notify won't recurse.
     const errorQueue: Array<{ error: unknown; context: AmnesiaErrorContext }> = [];
     let flushing = false;
+
+    // Lifecycle hook event queue. Hooks fire AFTER subscribers have been
+    // notified so handlers see a consistent store and can safely re-enter.
+    // Drained from `notify()` between the listener dispatch and the error
+    // drain, with a re-entrancy guard mirroring `errorQueue`.
+    type HookEvent =
+        | { kind: "push"; entry: HistoryEntry }
+        | { kind: "undo"; entry: HistoryEntry }
+        | { kind: "redo"; entry: HistoryEntry }
+        | { kind: "clear" };
+    const hookQueue: HookEvent[] = [];
+    let drainingHooks = false;
 
     const drainErrors = (): void => {
         if (flushing) return;
@@ -116,8 +133,40 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         queueMicrotask(drainErrors);
     };
 
+    const drainHooks = (): void => {
+        if (drainingHooks) return;
+        if (hookQueue.length === 0) return;
+        drainingHooks = true;
+        try {
+            while (hookQueue.length > 0) {
+                const event = hookQueue.shift();
+                if (!event) break;
+                try {
+                    switch (event.kind) {
+                        case "push":
+                            onPushHook?.(event.entry);
+                            break;
+                        case "undo":
+                            onUndoHook?.(event.entry);
+                            break;
+                        case "redo":
+                            onRedoHook?.(event.entry);
+                            break;
+                        case "clear":
+                            onClearHook?.();
+                            break;
+                    }
+                } catch {
+                    // Hook failures must not break the store.
+                }
+            }
+        } finally {
+            drainingHooks = false;
+        }
+    };
+
     const notify = (): void => {
-        snapshot = freezeSnapshot(past, future, version, epoch, pendingTokens);
+        snapshot = freezeSnapshot(past, future, version, epoch, pendingTokens, metaTransform);
         // Snapshot the listener list so callbacks added or removed during
         // dispatch do not affect the current tick.
         const dispatch = Array.from(listeners);
@@ -128,6 +177,7 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
                 // Subscriber failures are isolated; the store stays consistent.
             }
         }
+        drainHooks();
         drainErrors();
     };
 
@@ -246,7 +296,9 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
                 if (canCoalesce && previous !== undefined) {
                     // Replace the redo with the latest one but keep the
                     // original undo so a single Ctrl+Z reverts the entire
-                    // coalesced burst.
+                    // coalesced burst. Per the lifecycle-hook contract, this
+                    // does NOT fire `onPush` — the burst is one logical
+                    // user action and only the originating push counts.
                     const merged: InternalEntry = {
                         id: previous.id,
                         pushedAt: now,
@@ -278,6 +330,9 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
                 }
                 future = [];
                 version += 1;
+                if (onPushHook) {
+                    hookQueue.push({ kind: "push", entry: toPublic(entry, metaTransform) });
+                }
                 return entry.id;
             },
         );
@@ -299,6 +354,9 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
                 past = past.slice(0, -1);
                 future = [...future, entry];
                 version += 1;
+                if (onUndoHook) {
+                    hookQueue.push({ kind: "undo", entry: toPublic(entry, metaTransform) });
+                }
                 return entry.id;
             },
         );
@@ -320,6 +378,9 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
                 future = future.slice(0, -1);
                 past = [...past, entry];
                 version += 1;
+                if (onRedoHook) {
+                    hookQueue.push({ kind: "redo", entry: toPublic(entry, metaTransform) });
+                }
                 return entry.id;
             },
         );
@@ -417,6 +478,9 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         }
         future = [];
         version += 1;
+        if (onPushHook) {
+            hookQueue.push({ kind: "push", entry: toPublic(entry, metaTransform) });
+        }
         pendingTokens.delete(token);
         notify();
         return entry.id;
@@ -539,6 +603,9 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         // an already-doomed transaction.
         activeTransaction = null;
         version += 1;
+        if (onClearHook) {
+            hookQueue.push({ kind: "clear" });
+        }
         notify();
     };
 
@@ -557,7 +624,7 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
         listeners.clear();
         // Snapshot is still readable (frozen). Refresh it so any post-dispose
         // getSnapshot() reflects the cleared state.
-        snapshot = freezeSnapshot(past, future, version, epoch, pendingTokens);
+        snapshot = freezeSnapshot(past, future, version, epoch, pendingTokens, metaTransform);
     };
 
     const subscribe: Amnesia["subscribe"] = (listener) => {
@@ -573,16 +640,19 @@ export function createAmnesiaStore(options: AmnesiaProviderOptions = {}): Amnesi
     return { push, undo, redo, transaction, clear, dispose, subscribe, getSnapshot };
 }
 
+type MetaTransform = (meta: Record<string, unknown>) => Record<string, unknown> | undefined;
+
 function freezeSnapshot(
     past: InternalEntry[],
     future: InternalEntry[],
     version: number,
     epoch: number,
     pendingTokens: ReadonlySet<symbol>,
+    metaTransform: MetaTransform | undefined,
 ): AmnesiaState {
     return Object.freeze({
-        past: Object.freeze(past.map(toPublic)) as readonly HistoryEntry[],
-        future: Object.freeze(future.map(toPublic)) as readonly HistoryEntry[],
+        past: Object.freeze(past.map((e) => toPublic(e, metaTransform))) as readonly HistoryEntry[],
+        future: Object.freeze(future.map((e) => toPublic(e, metaTransform))) as readonly HistoryEntry[],
         canUndo: past.length > 0,
         canRedo: future.length > 0,
         version,
@@ -591,13 +661,23 @@ function freezeSnapshot(
     });
 }
 
-function toPublic(entry: InternalEntry): HistoryEntry {
+function toPublic(entry: InternalEntry, metaTransform: MetaTransform | undefined): HistoryEntry {
+    let publicMeta: Record<string, unknown> | undefined = entry.meta;
+    if (publicMeta !== undefined && metaTransform) {
+        try {
+            publicMeta = metaTransform(publicMeta);
+        } catch {
+            // A failing metaTransform must not break the store. Strip the
+            // meta entirely rather than leaking unsanitized values.
+            publicMeta = undefined;
+        }
+    }
     return Object.freeze({
         id: entry.id,
         pushedAt: entry.pushedAt,
         ...(entry.label !== undefined ? { label: entry.label } : {}),
         ...(entry.coalesceKey !== undefined ? { coalesceKey: entry.coalesceKey } : {}),
-        ...(entry.meta !== undefined ? { meta: entry.meta } : {}),
+        ...(publicMeta !== undefined ? { meta: publicMeta } : {}),
     });
 }
 

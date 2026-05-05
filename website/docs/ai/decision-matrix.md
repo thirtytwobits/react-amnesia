@@ -39,6 +39,17 @@ would change user behavior after a Ctrl+Z.
 | Reading the stack for UI (history list, breadcrumb, badges)    | `useAmnesia()` snapshot            | Already memo-stable; no need to subscribe manually                   |
 | Direct programmatic undo / redo (toolbar buttons, menu items)  | `useAmnesia().undo()` / `.redo()`  | Resolves to the affected entry id, or `null` when the stack was empty |
 
+## Lifecycle Hooks vs Subscribers
+
+| Need                                                                            | Approach                                                |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Telemetry (analytics, audit log)                                                | Provider-level `onPush` / `onUndo` / `onRedo` / `onClear` |
+| Driving UI state ("how many entries on the stack?")                             | `useAmnesia()` snapshot — subscribers, not hooks        |
+| Per-scope analytics with different fields per surface                           | Per-scope override in `scopes={{ canvas: { onPush } }}` |
+| Forward errors to a tracker                                                     | `onError` (existing) — not a lifecycle hook             |
+| Redact secrets / PII before they leave the store                                | `metaTransform`                                         |
+| Need to fire side effects synchronously with the mutation                       | NOT a hook — wrap the mutation; hooks are post-notify   |
+
 ## `transaction` vs Many `push`es
 
 | Need                                                                            | Approach                                       |

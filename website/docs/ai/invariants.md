@@ -36,6 +36,17 @@ guarantees.
 - The default `onError` handler logs to `console.error` with the prefix `[Amnesia]`. A custom handler that itself throws is caught and ignored.
 - Provider options (`capacity`, `coalesceWindowMs`, `onError`) are read once at mount. Subsequent prop changes are ignored. Remount the provider with a `key` to apply new settings.
 
+## Lifecycle Hooks
+
+- Provider options accept `onPush(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
+- The store-level shape (`AmnesiaStoreOptions`) takes the scopeId-free form: `onPush(entry)`, `onUndo(entry)`, `onRedo(entry)`, `onClear()`. The provider api binds scopeId before forwarding.
+- Hook events are queued during a mutation and dispatched from `notify()` after subscribers fire. They never run before the snapshot is updated.
+- A re-entrancy guard prevents a hook that calls `push` / `undo` / `redo` from causing nested drains: the inner mutation queues its own hook event, and the outer drain picks it up.
+- `onPush` fires exactly once per logical user action: never on coalesce-merge, never on rollback, exactly once per transaction commit.
+- `onClear` fires only when `clear()` actually mutated state. Empty/no-op clears do not fire. Provider-level `clear()` (no arg) fires `onClear` once for each scope that was non-empty.
+- A hook that throws is caught and ignored; the rest of the queue still drains. `metaTransform` failures also do not poison the store — the failing entry's `meta` is stripped before the hook sees it.
+- `metaTransform(meta)` runs every time `meta` is exposed: in the public snapshot's `past` / `future` entries AND in hook payloads. Returning `undefined` strips `meta` from the public form.
+
 ## Transactions
 
 - `transaction(label?, work)` is per-scope. The store is single-flight while the transaction runs; concurrent `push` / `undo` / `redo` from outside the work function hit `phase: "busy"` and resolve to `null`.

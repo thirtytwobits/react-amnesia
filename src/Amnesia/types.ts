@@ -242,9 +242,14 @@ export interface AmnesiaErrorContext {
 }
 
 /**
- * Configuration for `AmnesiaProvider`.
+ * Lower-level configuration consumed by `createAmnesiaStore`. Hooks receive
+ * the entry only — there is no scope concept at the store level.
+ *
+ * `AmnesiaProviderOptions` extends this for the React provider with
+ * scopeId-aware hooks; the provider api binds scopeId before passing
+ * options to the underlying store.
  */
-export interface AmnesiaProviderOptions {
+export interface AmnesiaStoreOptions {
     /**
      * Maximum number of entries retained on the past stack. When the limit is
      * reached, the oldest entry is dropped on every new push.
@@ -267,6 +272,85 @@ export interface AmnesiaProviderOptions {
      * {@link AmnesiaErrorHandler}.
      */
     onError?: AmnesiaErrorHandler;
+
+    /**
+     * Lifecycle hook fired after a successful `push` commits a new entry.
+     * Coalesce-merges do **not** fire this — only the first push of a
+     * coalesce burst counts as a logical user action.
+     *
+     * Hook payloads are dispatched after the snapshot is updated and after
+     * subscribers have been notified, so handlers see a quiescent store.
+     * A throw inside the handler is caught and ignored. The `entry`'s
+     * `meta` (when present) has already been passed through `metaTransform`.
+     */
+    onPush?: (entry: HistoryEntry) => void;
+
+    /** Lifecycle hook fired after a successful `undo`. */
+    onUndo?: (entry: HistoryEntry) => void;
+
+    /** Lifecycle hook fired after a successful `redo`. */
+    onRedo?: (entry: HistoryEntry) => void;
+
+    /**
+     * Lifecycle hook fired after `clear()` on a scope that actually had
+     * something to clear. (No-op clears do not fire.)
+     */
+    onClear?: () => void;
+
+    /**
+     * Sanitizer applied to `meta` before it is exposed in the public
+     * snapshot or passed to lifecycle hooks. Use this to redact sensitive
+     * fields without forcing every call site to remember the rule.
+     *
+     * Only invoked when `meta` is defined. The return value replaces `meta`
+     * in the public `HistoryEntry`; returning `undefined` strips it.
+     *
+     * The transform should be pure and stable — it runs every time the
+     * snapshot is rebuilt and every time a hook is fired.
+     */
+    metaTransform?: (meta: Record<string, unknown>) => Record<string, unknown> | undefined;
+}
+
+/**
+ * Configuration for `AmnesiaProvider`.
+ *
+ * Extends {@link AmnesiaStoreOptions} but exposes scopeId-aware lifecycle
+ * hooks so the same handler can serve every scope under one provider.
+ */
+export interface AmnesiaProviderOptions extends Omit<AmnesiaStoreOptions, "onPush" | "onUndo" | "onRedo" | "onClear"> {
+    /**
+     * Lifecycle hook fired after a successful `push` commits a new entry to
+     * the past stack of `scopeId`. Coalesce-merges do **not** fire this —
+     * only the first push of a coalesce burst counts as a logical user
+     * action.
+     *
+     * Hook payloads are dispatched after the snapshot is updated and after
+     * subscribers have been notified, so handlers see a quiescent store.
+     * A throw inside the handler is caught and ignored.
+     *
+     * The `entry`'s `meta` (when present) has already been passed through
+     * the scope's `metaTransform`.
+     */
+    onPush?: (entry: HistoryEntry, scopeId: string) => void;
+
+    /**
+     * Lifecycle hook fired after a successful `undo` on `scopeId`. The
+     * `entry` is the one that was moved from past to future.
+     */
+    onUndo?: (entry: HistoryEntry, scopeId: string) => void;
+
+    /**
+     * Lifecycle hook fired after a successful `redo` on `scopeId`. The
+     * `entry` is the one that was moved from future to past.
+     */
+    onRedo?: (entry: HistoryEntry, scopeId: string) => void;
+
+    /**
+     * Lifecycle hook fired after `clear()` on `scopeId` (and only when the
+     * call actually cleared something). When the provider's `clear()`
+     * clears all scopes, this fires once per cleared scope.
+     */
+    onClear?: (scopeId: string) => void;
 }
 
 /**

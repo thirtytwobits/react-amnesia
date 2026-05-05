@@ -145,6 +145,45 @@ Prefer:
 - references (e.g. user id) and resolving sensitive data at runtime
 - structured labels that summarize the action without leaking material
 
+## Driving UI From Lifecycle Hooks
+
+Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are for
+side-channel observers — analytics, devtools, audit logs. They are NOT a
+substitute for subscribing to the snapshot.
+
+Wrong:
+
+- using `onPush` to update React state via `setState` from outside the React
+  tree
+- treating the hook payload as the source of truth for "what's on the stack"
+
+Prefer:
+
+- `useAmnesia()` (or the scoped variant) — drives UI through normal
+  subscriber semantics
+- `onPush` for fire-and-forget telemetry that does not feed back into the
+  rendered output
+
+## Putting Side-Effecting Mutations Inside `metaTransform`
+
+`metaTransform` runs every time the snapshot is built and every time a hook
+fires. If it has side effects, they fire repeatedly with surprising timing.
+
+Wrong:
+
+```tsx
+metaTransform: (meta) => {
+    if (meta.audit) sendAuditLog(meta);   // ← runs N times per mutation
+    return meta;
+}
+```
+
+Prefer:
+
+- pure transforms only (`return { ...meta, secret: undefined }` etc.)
+- emit telemetry from `onPush` / `onUndo` / `onRedo` instead, which fire
+  exactly once per logical action
+
 ## Calling `store.push` From Inside Transaction `work`
 
 The store is single-flight while a transaction is in flight. A bare

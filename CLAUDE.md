@@ -27,6 +27,9 @@ application history with `react-amnesia`.
 - A throw inside a transaction's `work` rolls back every buffered undo in reverse and re-throws to the caller. `clear()` / `dispose()` during the await stales the transaction and rolls back instead. Empty transactions resolve to `null` with no entry.
 - Nested `transaction(...)` calls flatten into the outermost; the nested `label` argument is ignored, the outermost label or any `tx.label(...)` call wins.
 - Composite entries never coalesce with stack neighbors. Inside a transaction, individual `tx.push` calls do not coalesce with each other either.
+- Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are provider-level options. They fire once per logical action — coalesce-merges and rollback-due-to-throw do not fire `onPush`. A transaction commit fires exactly one `onPush` for the composite entry.
+- Hook payloads carry `(entry, scopeId)`; `onClear` carries `(scopeId)`. Hooks fire after subscribers have been notified, so handlers see a quiescent store and may safely re-enter `push` / `undo` / `redo`. A throwing hook is caught and ignored.
+- `metaTransform: (meta) => meta | undefined` redacts `meta` before it reaches the snapshot or any hook. Use this to strip secrets / PII without forcing every call site to remember the rule. Returning `undefined` strips meta entirely; a throwing transform also strips it.
 - A new `push` clears the redo (future) stack. There is no branching in v0.
 - Use `coalesceKey` (e.g. `"edit:title"`) for keystroke or drag bursts so a single Ctrl+Z reverts the whole burst. Coalescing across async commands is fragile — recommend against it.
 - Two pushes coalesce only when they share the same non-empty `coalesceKey` and arrive within `coalesceWindowMs` of each other.
@@ -64,6 +67,7 @@ application history with `react-amnesia`.
 - Divergent First-Apply With `Command.do`
 - Multi-Scope Authoring App
 - Transaction (Multi-Step Composite Entry)
+- Telemetry With Lifecycle Hooks + `metaTransform`
 - Custom Error Reporting
 - History Breadcrumb UI
 

@@ -467,7 +467,51 @@ If the `work` function throws or rejects, every buffered undo runs in
 reverse before the rejection propagates. `clear()` or `dispose()` during the
 await stales the transaction the same way.
 
-## 13. Custom Error Reporting
+## 13. Telemetry With Lifecycle Hooks + `metaTransform`
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import { logEvent } from "./analytics";
+
+const REDACT = new Set(["authToken", "userEmail", "ssn"]);
+
+export function App({ children }: { children: React.ReactNode }) {
+    return (
+        <AmnesiaProvider
+            metaTransform={(meta) => {
+                const safe: Record<string, unknown> = {};
+                for (const key of Object.keys(meta)) {
+                    if (!REDACT.has(key)) safe[key] = meta[key];
+                }
+                return safe;
+            }}
+            onPush={(entry, scopeId) => logEvent("undo.push", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })}
+            onUndo={(entry, scopeId) => logEvent("undo.undo", { scopeId, entryId: entry.id })}
+            onRedo={(entry, scopeId) => logEvent("undo.redo", { scopeId, entryId: entry.id })}
+            onClear={(scopeId) => logEvent("undo.clear", { scopeId })}
+        >
+            <AmnesiaShortcuts />
+            {children}
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- you want analytics on undo behaviour without tangling them into every push
+  call site
+- some `meta` fields are sensitive and must be redacted before leaving the
+  store
+- different scopes deserve different telemetry — pair `onPush` per-scope via
+  `scopes={{ canvas: { onPush: ... } }}`
+
+`metaTransform` runs everywhere `meta` is exposed: hook payloads AND the
+public snapshot. Telemetry handlers and history-list UI both see the
+sanitized form. A throwing transform safely strips `meta` rather than
+leaking unsanitized values.
+
+## 14. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -491,7 +535,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 14. History Breadcrumb UI
+## 15. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";

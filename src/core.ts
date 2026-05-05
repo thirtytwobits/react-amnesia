@@ -35,6 +35,7 @@ export type {
     AmnesiaErrorHandler,
     AmnesiaProviderOptions,
     AmnesiaState,
+    AmnesiaStoreOptions,
     Command,
     HistoryEntry,
     PushOptions,

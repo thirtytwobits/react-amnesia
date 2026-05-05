@@ -17,19 +17,31 @@
  */
 
 import { createAmnesiaStore } from "./history";
-import type { Amnesia, AmnesiaErrorHandler, AmnesiaProviderOptions } from "./types";
+import type {
+    Amnesia,
+    AmnesiaErrorHandler,
+    AmnesiaProviderOptions,
+    AmnesiaStoreOptions,
+    HistoryEntry,
+} from "./types";
 
 /** Reserved id for the implicit default scope. */
 export const DEFAULT_SCOPE_ID = "default";
 
 /**
- * Per-scope option overrides. Only `capacity`, `coalesceWindowMs`, and
- * `onError` are honored; provider-level defaults fill in the rest.
+ * Per-scope option overrides. Each entry merges over the provider-level
+ * default at scope-creation time (lazy). Settings are frozen once a scope
+ * is first accessed.
  */
 export interface ScopeOptions {
     capacity?: number;
     coalesceWindowMs?: number;
     onError?: AmnesiaErrorHandler;
+    onPush?: (entry: HistoryEntry, scopeId: string) => void;
+    onUndo?: (entry: HistoryEntry, scopeId: string) => void;
+    onRedo?: (entry: HistoryEntry, scopeId: string) => void;
+    onClear?: (scopeId: string) => void;
+    metaTransform?: (meta: Record<string, unknown>) => Record<string, unknown> | undefined;
 }
 
 export interface AmnesiaProviderApiOptions extends AmnesiaProviderOptions {
@@ -106,17 +118,55 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         stores.set(DEFAULT_SCOPE_ID, defaultStore);
     }
 
-    const buildOptionsFor = (scopeId: string): AmnesiaProviderOptions => {
-        const merged: AmnesiaProviderOptions = {};
-        if (providerDefaults.capacity !== undefined) merged.capacity = providerDefaults.capacity;
-        if (providerDefaults.coalesceWindowMs !== undefined) merged.coalesceWindowMs = providerDefaults.coalesceWindowMs;
-        if (providerDefaults.onError !== undefined) merged.onError = providerDefaults.onError;
+    /**
+     * Build the store-level options for a scope. Merges scope override over
+     * the provider-level default, then binds every scopeId-aware hook so
+     * the underlying store sees plain `(entry) => void` / `() => void`
+     * signatures.
+     */
+    const buildOptionsFor = (scopeId: string): AmnesiaStoreOptions => {
         const override = scopeOverrides?.[scopeId];
-        if (override) {
-            if (override.capacity !== undefined) merged.capacity = override.capacity;
-            if (override.coalesceWindowMs !== undefined) merged.coalesceWindowMs = override.coalesceWindowMs;
-            if (override.onError !== undefined) merged.onError = override.onError;
+
+        const merged: AmnesiaStoreOptions = {};
+
+        const capacity = override?.capacity !== undefined ? override.capacity : providerDefaults.capacity;
+        if (capacity !== undefined) merged.capacity = capacity;
+
+        const coalesceWindowMs =
+            override?.coalesceWindowMs !== undefined ? override.coalesceWindowMs : providerDefaults.coalesceWindowMs;
+        if (coalesceWindowMs !== undefined) merged.coalesceWindowMs = coalesceWindowMs;
+
+        const onError = override?.onError !== undefined ? override.onError : providerDefaults.onError;
+        if (onError !== undefined) merged.onError = onError;
+
+        const onPush = override?.onPush !== undefined ? override.onPush : providerDefaults.onPush;
+        if (onPush !== undefined) {
+            const bound = onPush;
+            merged.onPush = (entry: HistoryEntry) => bound(entry, scopeId);
         }
+
+        const onUndo = override?.onUndo !== undefined ? override.onUndo : providerDefaults.onUndo;
+        if (onUndo !== undefined) {
+            const bound = onUndo;
+            merged.onUndo = (entry: HistoryEntry) => bound(entry, scopeId);
+        }
+
+        const onRedo = override?.onRedo !== undefined ? override.onRedo : providerDefaults.onRedo;
+        if (onRedo !== undefined) {
+            const bound = onRedo;
+            merged.onRedo = (entry: HistoryEntry) => bound(entry, scopeId);
+        }
+
+        const onClear = override?.onClear !== undefined ? override.onClear : providerDefaults.onClear;
+        if (onClear !== undefined) {
+            const bound = onClear;
+            merged.onClear = () => bound(scopeId);
+        }
+
+        const metaTransform =
+            override?.metaTransform !== undefined ? override.metaTransform : providerDefaults.metaTransform;
+        if (metaTransform !== undefined) merged.metaTransform = metaTransform;
+
         return merged;
     };
 
