@@ -1,0 +1,9 @@
+node_modules
+.DS_Store
+dist
+coverage
+.vitest
+.last-run*
+*.tsbuildinfo
+build-ts
+/docs

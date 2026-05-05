@@ -1,0 +1,346 @@
+---
+sidebar_position: 4
+title: Recipes
+description: Canonical copy-pastable patterns for the most common undo/redo behaviors.
+---
+
+# Recipes
+
+These recipes are intentionally compact and focus on undo/redo choices that
+agents often get wrong under time pressure.
+
+## 1. Reversible Single-Value Editor
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts, useUndoableState } from "react-amnesia";
+
+function TitleEditor() {
+    const [title, setTitle] = useUndoableState("Untitled", {
+        label: "Edit title",
+        coalesceKey: "edit:title",
+    });
+
+    return <input value={title} onChange={(event) => setTitle(event.target.value)} />;
+}
+
+export function App() {
+    return (
+        <AmnesiaProvider capacity={200}>
+            <AmnesiaShortcuts />
+            <TitleEditor />
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- a piece of state has a clean replacement value
+- rapid typing should collapse into a single undo entry
+- the surrounding `<AmnesiaShortcuts />` should drive Ctrl+Z / Cmd+Z
+
+## 2. Coalesced Slider Drag
+
+```tsx
+import { useUndoableState } from "react-amnesia";
+
+export function VolumeSlider() {
+    const [volume, setVolume] = useUndoableState(50, {
+        label: "Adjust volume",
+        coalesceKey: "drag:volume",
+    });
+
+    return (
+        <input
+            type="range"
+            min={0}
+            max={100}
+            value={volume}
+            onChange={(event) => setVolume(Number(event.target.value))}
+        />
+    );
+}
+```
+
+A slider can fire dozens of changes per second. The shared `coalesceKey`
+collapses the whole drag into one history entry so a single Ctrl+Z restores
+the pre-drag value.
+
+## 3. Imperative List Mutation
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type Item = { id: string; text: string };
+
+export function AddItemButton({ list }: { list: { add: (item: Item) => void; remove: (id: string) => void } }) {
+    const { push } = useAmnesia();
+
+    return (
+        <button
+            onClick={() => {
+                const item: Item = { id: crypto.randomUUID(), text: "New item" };
+                list.add(item);
+                push(
+                    {
+                        label: "Add item",
+                        redo: () => list.add(item),
+                        undo: () => list.remove(item.id),
+                    },
+                    { applied: true },
+                );
+            }}
+        >
+            Add
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the change does not fit a single replacement value
+- the inverse depends on data captured at the call site (here: the new item id)
+- the calling code already mutated the underlying state, so `redo()` should not run on insertion
+
+## 4. Persistence-Aware Editor
+
+```tsx
+import { MnemonicProvider } from "react-mnemonic";
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import { usePersistedUndoableState } from "react-amnesia/mnemonic";
+
+function ThemePicker() {
+    const { value, set } = usePersistedUndoableState<"light" | "dark">("theme", {
+        defaultValue: "light",
+        label: "Change theme",
+    });
+
+    return (
+        <select value={value} onChange={(event) => set(event.target.value as "light" | "dark")}>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+        </select>
+    );
+}
+
+export function App() {
+    return (
+        <MnemonicProvider namespace="my-app">
+            <AmnesiaProvider>
+                <AmnesiaShortcuts />
+                <ThemePicker />
+            </AmnesiaProvider>
+        </MnemonicProvider>
+    );
+}
+```
+
+Use when:
+
+- the value should survive reload
+- changes should still be reversible while the user is on the page
+- it is acceptable for the undo history to start empty after each reload
+
+## 5. Document Switch With `clear()`
+
+```tsx
+import { useEffect } from "react";
+import { useAmnesia } from "react-amnesia";
+
+export function useDocumentReset(documentId: string) {
+    const { clear } = useAmnesia();
+
+    useEffect(() => {
+        clear();
+    }, [documentId, clear]);
+}
+```
+
+Use when the application switches between documents or workspaces. The closures
+captured by previous entries probably reference the prior document's state;
+`clear()` drops both stacks without invoking them.
+
+## 6. Modal Owns Its Own Keybindings
+
+```tsx
+import { useState } from "react";
+import { AmnesiaShortcuts } from "react-amnesia";
+
+export function ColorPickerModal({ open }: { open: boolean }) {
+    const [scopedHistory] = useState(() => [/* ... */]);
+    return (
+        <>
+            <AmnesiaShortcuts enabled={!open} />
+            {open ? <ColorPickerWithItsOwnUndo history={scopedHistory} /> : null}
+        </>
+    );
+}
+```
+
+Use when a modal has its own undo semantics (e.g. a color picker with its own
+preview history) and the global shortcuts must yield while it is open.
+Toggling `enabled` is preferable to unmounting the component.
+
+## 7. Surface-Scoped Shortcut Binding
+
+```tsx
+import { useRef, type RefObject } from "react";
+import { AmnesiaShortcuts } from "react-amnesia";
+
+export function CanvasRegion() {
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+        <div ref={ref} tabIndex={0} style={{ outline: "none" }}>
+            <AmnesiaShortcuts target={ref.current} skipEditableTargets={false} />
+            {/* ...canvas... */}
+        </div>
+    );
+}
+```
+
+Use when only a specific surface should respond to undo / redo chords. Setting
+`skipEditableTargets` to `false` is appropriate here because the canvas
+region is not a native editable target.
+
+## 8. Reversible Multi-Key Persisted Action
+
+```tsx
+import { useMnemonicKey } from "react-mnemonic";
+import { useAmnesia } from "react-amnesia";
+
+export function ApplyPresetButton({ preset }: { preset: { theme: "light" | "dark"; density: "comfy" | "compact" } }) {
+    const theme = useMnemonicKey<"light" | "dark">("theme", { defaultValue: "light" });
+    const density = useMnemonicKey<"comfy" | "compact">("density", { defaultValue: "comfy" });
+    const { push } = useAmnesia();
+
+    return (
+        <button
+            onClick={() => {
+                const previousTheme = theme.value;
+                const previousDensity = density.value;
+                theme.set(preset.theme);
+                density.set(preset.density);
+                push(
+                    {
+                        label: "Apply preset",
+                        redo: () => {
+                            theme.set(preset.theme);
+                            density.set(preset.density);
+                        },
+                        undo: () => {
+                            theme.set(previousTheme);
+                            density.set(previousDensity);
+                        },
+                    },
+                    { applied: true },
+                );
+            }}
+        >
+            Apply
+        </button>
+    );
+}
+```
+
+Use when one user action mutates several persisted keys and the inverse must
+restore them as a unit. `usePersistedUndoableState` covers single keys; this
+pattern handles compound, atomic actions.
+
+## 9. Async Command (Server-Backed Setting)
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+type ServerSettings = { theme: "light" | "dark" };
+
+export function ApplyServerThemeButton({
+    next,
+    current,
+    api,
+}: {
+    next: ServerSettings["theme"];
+    current: ServerSettings["theme"];
+    api: { applyTheme: (value: ServerSettings["theme"]) => Promise<void> };
+}) {
+    const { push, pending } = useAmnesia();
+
+    return (
+        <button
+            disabled={pending}
+            onClick={async () => {
+                const id = await push({
+                    label: "Change theme",
+                    redo: () => api.applyTheme(next),
+                    undo: () => api.applyTheme(current),
+                });
+                if (id === null) {
+                    // Either another op was in flight (busy) or clear() raced
+                    // the await (stale). Either way the entry was dropped.
+                }
+            }}
+        >
+            {pending ? "Applying…" : `Switch to ${next}`}
+        </button>
+    );
+}
+```
+
+Use when:
+
+- the inverse must talk to a server before the user can move on
+- the UI should disable affordances during the in-flight window (`pending`)
+- a concurrent click should not stack a second pending op (single-flight)
+
+The handler returning a Promise causes the store to flip `pending: true` for
+the duration of the await. Subscribers see the busy state synchronously.
+
+## 10. Custom Error Reporting
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
+import * as Sentry from "@sentry/react";
+
+export function App({ children }: { children: React.ReactNode }) {
+    return (
+        <AmnesiaProvider
+            capacity={300}
+            onError={(error, context) => {
+                Sentry.captureException(error, { tags: { phase: context.phase, label: context.label ?? "" } });
+            }}
+        >
+            <AmnesiaShortcuts />
+            {children}
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when failing inverses should reach an error tracker. Remember that throwing
+from the handler is caught and ignored — the handler must complete successfully.
+
+## 11. History Breadcrumb UI
+
+```tsx
+import { useAmnesia } from "react-amnesia";
+
+export function HistoryBreadcrumb() {
+    const { past, future } = useAmnesia();
+    return (
+        <ol>
+            {past.map((entry) => (
+                <li key={entry.id}>{entry.label ?? `entry-${entry.id}`}</li>
+            ))}
+            {future.map((entry) => (
+                <li key={entry.id} aria-disabled="true">
+                    {entry.label ?? `entry-${entry.id}`}
+                </li>
+            ))}
+        </ol>
+    );
+}
+```
+
+Use when the UI needs to display the history. Snapshots are referentially
+stable until the next mutation, so React's render bailout works without extra
+memoization.

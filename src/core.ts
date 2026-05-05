@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MIT
+// Copyright Scott Dixon
+
+/**
+ * @fileoverview Public entrypoint for the Amnesia core runtime.
+ *
+ * `react-amnesia/core` exposes the provider, hooks, and types needed to
+ * implement application-level undo/redo. It does not depend on
+ * `react-mnemonic`. For the persistence-aware bridge, import from
+ * `react-amnesia/mnemonic`.
+ */
+
+export { AmnesiaProvider, useAmnesiaStore, useAmnesiaStoreOptional } from "./Amnesia/provider";
+export type { AmnesiaProviderProps } from "./Amnesia/provider";
+export { useAmnesia } from "./Amnesia/use";
+export type { UseAmnesiaResult } from "./Amnesia/use";
+export { useUndoableState } from "./Amnesia/use-undoable-state";
+export type { UndoableSetter } from "./Amnesia/use-undoable-state";
+export { AmnesiaShortcuts } from "./Amnesia/shortcuts";
+export type { AmnesiaShortcutsProps } from "./Amnesia/shortcuts";
+export { createAmnesiaStore } from "./Amnesia/history";
+export type {
+    Amnesia,
+    AmnesiaErrorContext,
+    AmnesiaErrorHandler,
+    AmnesiaProviderOptions,
+    AmnesiaState,
+    Command,
+    HistoryEntry,
+    PushOptions,
+    UseUndoableStateOptions,
+} from "./Amnesia/types";
