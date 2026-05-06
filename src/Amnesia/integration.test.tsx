@@ -280,3 +280,84 @@ describe("AmnesiaProvider — strict mode + lifecycle", () => {
         expect(ownedDispose).not.toHaveBeenCalled();
     });
 });
+
+describe("AmnesiaProvider option forwarding", () => {
+    it("forwards provider-level hooks and metaTransform to the underlying default scope", async () => {
+        const onPush = vi.fn();
+        const onUndo = vi.fn();
+        const onRedo = vi.fn();
+        const onClear = vi.fn();
+        const onAmend = vi.fn();
+
+        function App() {
+            const { push, amend, undo, redo, clear, canUndo, canRedo } = useAmnesia();
+            return (
+                <div>
+                    <button
+                        onClick={() =>
+                            void push(
+                                {
+                                    label: "With meta",
+                                    meta: { secret: "shh", visible: 1 },
+                                    redo: () => undefined,
+                                    undo: () => undefined,
+                                },
+                                { applied: true },
+                            )
+                        }
+                    >
+                        push
+                    </button>
+                    <button onClick={() => void amend({ label: "With meta (amended)" })}>amend</button>
+                    <button disabled={!canUndo} onClick={() => void undo()}>
+                        undo
+                    </button>
+                    <button disabled={!canRedo} onClick={() => void redo()}>
+                        redo
+                    </button>
+                    <button onClick={() => clear()}>clear</button>
+                </div>
+            );
+        }
+
+        const user = userEvent.setup();
+        render(
+            <AmnesiaProvider
+                onPush={onPush}
+                onAmend={onAmend}
+                onUndo={onUndo}
+                onRedo={onRedo}
+                onClear={onClear}
+                metaTransform={(meta) => {
+                    const { secret: _secret, ...rest } = meta;
+                    return rest;
+                }}
+            >
+                <App />
+            </AmnesiaProvider>,
+        );
+
+        await user.click(screen.getByText("push"));
+        expect(onPush).toHaveBeenCalledTimes(1);
+        expect(onPush.mock.calls[0]?.[0]).toMatchObject({
+            label: "With meta",
+            meta: { visible: 1 },
+        });
+
+        await user.click(screen.getByText("amend"));
+        expect(onAmend).toHaveBeenCalledTimes(1);
+        expect(onAmend.mock.calls[0]?.[0]).toMatchObject({
+            label: "With meta (amended)",
+            meta: { visible: 1 },
+        });
+
+        await user.click(screen.getByText("undo"));
+        expect(onUndo).toHaveBeenCalledTimes(1);
+        await user.click(screen.getByText("redo"));
+        expect(onRedo).toHaveBeenCalledTimes(1);
+
+        await user.click(screen.getByText("clear"));
+        expect(onClear).toHaveBeenCalledTimes(1);
+        expect(onClear.mock.calls[0]?.[0]).toBe("default");
+    });
+});

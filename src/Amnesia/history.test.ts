@@ -172,6 +172,31 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         });
     });
 
+    it("amend preserves the original pushedAt timestamp", async () => {
+        const store = createAmnesiaStore();
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await store.push(
+                {
+                    label: "Original label",
+                    redo: () => undefined,
+                    undo: () => undefined,
+                },
+                { applied: true },
+            );
+            const originalPushedAt = store.getSnapshot().past[0]?.pushedAt;
+            expect(originalPushedAt).toBeDefined();
+
+            fakeNow += 10_000;
+            await store.amend({ label: "Refined label" });
+            expect(store.getSnapshot().past[0]?.pushedAt).toBe(originalPushedAt);
+        } finally {
+            Date.now = before;
+        }
+    });
+
     it("amend clears the future stack, same as a fresh push", async () => {
         const counter = makeCounter();
         const store = createAmnesiaStore();

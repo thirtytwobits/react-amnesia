@@ -490,6 +490,7 @@ export interface Amnesia {
      *
      * - Targets `past[past.length - 1]` only; no key/window matching.
      * - Preserves original fields unless overridden by `patch`.
+     * - Preserves the original `pushedAt` timestamp.
      * - Clears the future stack (same as push).
      *
      * Resolves to the amended entry id, or `null` when no amend occurred

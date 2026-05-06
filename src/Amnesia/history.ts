@@ -394,7 +394,9 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
 
         const amended: InternalEntry = {
             id: previous.id,
-            pushedAt: nowMs(),
+            // Preserve original push timestamp so amend does not refresh
+            // coalescing/timing semantics for this logical entry.
+            pushedAt: previous.pushedAt,
             redo: patch.redo ?? previous.redo,
             undo: patch.undo ?? previous.undo,
             ...(patch.label !== undefined

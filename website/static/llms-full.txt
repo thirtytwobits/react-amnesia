@@ -352,7 +352,7 @@ guarantees.
 1. If the store is disposed, resolve to `null`.
 2. If `pendingTokens` is non-empty, schedule `onError({ phase: "busy" })` and resolve to `null`.
 3. Read the last past entry. If none exists, resolve to `null`.
-4. Replace only fields present in `patch` (`redo`, `undo`, `label`, `meta`), preserve the rest, and keep the same entry id.
+4. Replace only fields present in `patch` (`redo`, `undo`, `label`, `meta`), preserve the rest, keep the same entry id, and keep the original `pushedAt`.
 5. Replace the last past entry with the amended entry, clear future, increment `version`, rebuild snapshot, and notify subscribers.
 
 ## Keyboard Shortcut Boundaries
