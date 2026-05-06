@@ -55,8 +55,7 @@ import { dispatchNativeUndo, isNativeEditableElement } from "react-amnesia/nativ
 
 function handleUndoMenuClick() {
     if (isNativeEditableElement(document.activeElement)) {
-        dispatchNativeUndo("undo");
-        return;
+        if (dispatchNativeUndo("undo")) return;
     }
     // Otherwise call your app-level amnesia undo.
 }

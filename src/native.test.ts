@@ -57,9 +57,13 @@ describe("isNativeEditableElement", () => {
         input.type = "text";
         root.appendChild(input);
         document.body.appendChild(host);
-        input.focus();
-
-        expect(isNativeEditableElement(host)).toBe(true);
+        try {
+            input.focus();
+            expect(isNativeEditableElement(host)).toBe(true);
+        } finally {
+            input.blur();
+            host.remove();
+        }
     });
 
     it("returns false for non-editable targets", () => {

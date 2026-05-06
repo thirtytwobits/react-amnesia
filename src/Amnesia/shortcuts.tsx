@@ -157,9 +157,6 @@ function resolveTarget(target: AmnesiaShortcutsTarget | undefined): EventTarget 
  */
 function isEditableTarget(event: KeyboardEvent): boolean {
     const composed: EventTarget[] = typeof event.composedPath === "function" ? event.composedPath() : [];
-    const candidates: ReadonlyArray<EventTarget> = composed.length > 0 ? composed : event.target ? [event.target] : [];
-    for (const node of candidates) {
-        if (isNativeEditableElement(node)) return true;
-    }
-    return false;
+    const first = composed.length > 0 ? composed[0] : event.target;
+    return isNativeEditableElement(first ?? null);
 }
