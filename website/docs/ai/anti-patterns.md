@@ -300,7 +300,7 @@ Prefer:
 
 ## Driving UI From Lifecycle Hooks
 
-Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are for
+Lifecycle hooks (`onPush` / `onAmend` / `onUndo` / `onRedo` / `onClear`) are for
 side-channel observers — analytics, devtools, audit logs. They are NOT a
 substitute for subscribing to the snapshot.
 
@@ -334,7 +334,7 @@ metaTransform: (meta) => {
 Prefer:
 
 - pure transforms only (`return { ...meta, secret: undefined }` etc.)
-- emit telemetry from `onPush` / `onUndo` / `onRedo` instead, which fire
+- emit telemetry from `onPush` / `onAmend` / `onUndo` / `onRedo` instead, which fire
   exactly once per logical action
 
 ## Calling `store.push` From Inside Transaction `work`

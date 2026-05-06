@@ -673,6 +673,9 @@ export function App({ children }: { children: React.ReactNode }) {
             onPush={(entry, scopeId) =>
                 logEvent("undo.push", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })
             }
+            onAmend={(entry, scopeId) =>
+                logEvent("undo.amend", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })
+            }
             onUndo={(entry, scopeId) => logEvent("undo.undo", { scopeId, entryId: entry.id })}
             onRedo={(entry, scopeId) => logEvent("undo.redo", { scopeId, entryId: entry.id })}
             onClear={(scopeId) => logEvent("undo.clear", { scopeId })}

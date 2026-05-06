@@ -73,6 +73,152 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         expect(store.getSnapshot().canRedo).toBe(false);
     });
 
+    it("amend keeps the original undo while replacing redo", async () => {
+        let value = "";
+        const store = createAmnesiaStore();
+        const firstUndo = vi.fn(() => {
+            value = "";
+        });
+        const firstRedo = vi.fn(() => {
+            value = "h";
+        });
+        value = "h";
+        const id = await store.push(
+            {
+                label: "Edit title",
+                redo: firstRedo,
+                undo: firstUndo,
+            },
+            { applied: true },
+        );
+        expect(id).not.toBeNull();
+
+        const amendedRedo = vi.fn(() => {
+            value = "hi";
+        });
+        value = "hi";
+        const amendedId = await store.amend({
+            label: "Edit title (refined)",
+            redo: amendedRedo,
+            meta: { source: "agent" },
+        });
+        expect(amendedId).toBe(id);
+        expect(firstUndo).not.toHaveBeenCalled();
+        expect(firstRedo).not.toHaveBeenCalled();
+        expect(amendedRedo).not.toHaveBeenCalled();
+        expect(store.getSnapshot().past).toHaveLength(1);
+        expect(store.getSnapshot().past[0]).toMatchObject({
+            id,
+            label: "Edit title (refined)",
+            meta: { source: "agent" },
+        });
+
+        await store.undo();
+        expect(value).toBe("");
+        expect(firstUndo).toHaveBeenCalledTimes(1);
+
+        await store.redo();
+        expect(value).toBe("hi");
+        expect(amendedRedo).toHaveBeenCalledTimes(1);
+    });
+
+    it("amend can replace undo when explicitly provided", async () => {
+        let value = 1;
+        const store = createAmnesiaStore();
+        await store.push(
+            {
+                redo: () => {
+                    value = 1;
+                },
+                undo: () => {
+                    value = 0;
+                },
+            },
+            { applied: true },
+        );
+
+        value = 2;
+        await store.amend({
+            redo: () => {
+                value = 2;
+            },
+            undo: () => {
+                value = -1;
+            },
+        });
+
+        await store.undo();
+        expect(value).toBe(-1);
+        await store.redo();
+        expect(value).toBe(2);
+    });
+
+    it("amend preserves existing label/meta when omitted", async () => {
+        const store = createAmnesiaStore();
+        await store.push(
+            {
+                label: "Original label",
+                meta: { step: 1 },
+                redo: () => undefined,
+                undo: () => undefined,
+            },
+            { applied: true },
+        );
+
+        await store.amend({});
+        expect(store.getSnapshot().past[0]).toMatchObject({
+            label: "Original label",
+            meta: { step: 1 },
+        });
+    });
+
+    it("amend preserves the original pushedAt timestamp", async () => {
+        const store = createAmnesiaStore();
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await store.push(
+                {
+                    label: "Original label",
+                    redo: () => undefined,
+                    undo: () => undefined,
+                },
+                { applied: true },
+            );
+            const originalPushedAt = store.getSnapshot().past[0]?.pushedAt;
+            expect(originalPushedAt).toBeDefined();
+
+            fakeNow += 10_000;
+            await store.amend({ label: "Refined label" });
+            expect(store.getSnapshot().past[0]?.pushedAt).toBe(originalPushedAt);
+        } finally {
+            Date.now = before;
+        }
+    });
+
+    it("amend clears the future stack, same as a fresh push", async () => {
+        const counter = makeCounter();
+        const store = createAmnesiaStore();
+        await store.push({ redo: counter.increment, undo: counter.decrement });
+        await store.push({ redo: counter.increment, undo: counter.decrement });
+        await store.undo();
+        expect(store.getSnapshot().canRedo).toBe(true);
+
+        await store.amend({ label: "amended" });
+        expect(store.getSnapshot().canRedo).toBe(false);
+        expect(store.getSnapshot().future).toHaveLength(0);
+    });
+
+    it("amend resolves null on empty/disposed stores", async () => {
+        const store = createAmnesiaStore();
+        expect(await store.amend({ label: "nope" })).toBeNull();
+
+        await store.push({ redo: () => undefined, undo: () => undefined });
+        store.dispose();
+        expect(await store.amend({ label: "nope" })).toBeNull();
+    });
+
     it("resolves to null from undo/redo when stacks are empty", async () => {
         const store = createAmnesiaStore();
         expect(await store.undo()).toBeNull();
@@ -430,6 +576,30 @@ describe("createAmnesiaStore — async behavior", () => {
         // Use the unrelated `store` to assert that the busy-error path doesn't
         // leak into the snapshot of an unrelated store.
         expect(store.getSnapshot().pending).toBe(false);
+    });
+
+    it("drops amend while another op is pending and reports busy", async () => {
+        const onError = vi.fn();
+        const store = createAmnesiaStore({ onError });
+        await store.push({ redo: () => undefined, undo: () => undefined });
+
+        let release!: () => void;
+        const blocker = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+
+        const first = store.push({
+            redo: () => blocker,
+            undo: () => undefined,
+        });
+        const amended = await store.amend({ label: "no-op" });
+        expect(amended).toBeNull();
+
+        release();
+        await first;
+        await flushMicrotasks();
+
+        expect(onError).toHaveBeenCalledWith(undefined, expect.objectContaining({ phase: "busy", recoverable: true }));
     });
 
     it("drops in-flight pushes when clear() runs during the await (phase=stale)", async () => {

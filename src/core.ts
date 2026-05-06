@@ -45,6 +45,7 @@ export { AmnesiaShortcuts } from "./Amnesia/shortcuts";
 export type { AmnesiaShortcutsProps, AmnesiaShortcutsTarget } from "./Amnesia/shortcuts";
 export { createAmnesiaStore } from "./Amnesia/history";
 export type {
+    AmendPatch,
     Amnesia,
     AmnesiaErrorContext,
     AmnesiaErrorHandler,

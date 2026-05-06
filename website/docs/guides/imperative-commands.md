@@ -65,6 +65,38 @@ list.add(item); // mutate first
 push({ redo, undo }, { applied: true }); // record the inverse without re-running redo
 ```
 
+## Retroactive refine with `amend(...)`
+
+`amend(patch)` updates the most recent past entry in place.
+
+- Targets only `past[past.length - 1]`
+- Keeps existing fields unless overridden
+- Keeps original `undo` by default
+- Clears the redo stack, same as `push`
+
+```tsx
+const { push, amend } = useAmnesia();
+
+// initial edit
+setTitle("a");
+await push(
+    {
+        label: "Edit title",
+        redo: () => setTitle("a"),
+        undo: () => setTitle(""),
+    },
+    { applied: true },
+);
+
+// later refinement should not add another undo stop
+setTitle("ab");
+await amend({
+    label: "Edit title (refined)",
+    redo: () => setTitle("ab"),
+    // omit undo to preserve pre-edit restoration
+});
+```
+
 ## When to prefer `useUndoableState`
 
 If the mutation IS just "set this value to something else", reach for the

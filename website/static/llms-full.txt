@@ -105,14 +105,15 @@ Read these pages in order when context is tight:
 - `useAmnesiaScopes()` returns `{ activeScopeId, scopeIds, clear(scopeId?) }` for provider-level UI (breadcrumbs, document-switch reset). `clear()` with no arg clears every scope; `clear("canvas")` clears one.
 - The undo stack is **in-memory only**. Closures are not serialized and the history does not survive a reload.
 - To survive reloads, persist the underlying value (e.g. via `react-mnemonic`) and let the history start fresh per session.
-- `Command.redo` and `Command.undo` may be synchronous or return `Promise<void>`. `push` / `undo` / `redo` always return `Promise<number | null>`.
+- `Command.redo` and `Command.undo` may be synchronous or return `Promise<void>`. `push` / `amend` / `undo` / `redo` always return `Promise<number | null>`.
 - `push({ redo, undo, label })` calls `redo()` once on insertion. Pass `{ applied: true }` when the call site has already mutated state.
+- `amend({ ...patch })` updates only the latest past entry (`past[past.length - 1]`). Omitted fields are preserved, `undo` is preserved unless explicitly replaced, and future is cleared.
 - `Command.do` is optional. When supplied, it runs once at push time instead of `redo` and is **not stored** on the entry — every subsequent redo invokes `command.redo`. Use `do` when first-apply requires setup that re-apply does not.
 - `useAmnesia(scopeId?).transaction(label?, work)` collapses N pushes into one composite entry. `tx.push(command)` runs `command.do ?? command.redo` immediately and buffers `command.redo` / `command.undo`. On commit the past stack gains exactly one composite entry whose redo/undo replay all buffered handlers in order / reverse order.
 - A throw inside a transaction's `work` rolls back every buffered undo in reverse and re-throws to the caller. `clear()` / `dispose()` during the await stales the transaction and rolls back instead. Empty transactions resolve to `null` with no entry.
 - Nested `transaction(...)` calls flatten into the outermost; the nested `label` argument is ignored, the outermost label or any `tx.label(...)` call wins.
 - Composite entries never coalesce with stack neighbors. Inside a transaction, individual `tx.push` calls do not coalesce with each other either.
-- Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are provider-level options. They fire once per logical action — coalesce-merges and rollback-due-to-throw do not fire `onPush`. A transaction commit fires exactly one `onPush` for the composite entry.
+- Lifecycle hooks (`onPush` / `onAmend` / `onUndo` / `onRedo` / `onClear`) are provider-level options. They fire once per logical action — coalesce-merges and rollback-due-to-throw do not fire `onPush`. A transaction commit fires exactly one `onPush` for the composite entry.
 - Hook payloads carry `(entry, scopeId)`; `onClear` carries `(scopeId)`. Hooks fire after subscribers have been notified, so handlers see a quiescent store and may safely re-enter `push` / `undo` / `redo`. A throwing hook is caught and ignored.
 - `metaTransform: (meta) => meta | undefined` redacts `meta` before it reaches the snapshot or any hook. Use this to strip secrets / PII without forcing every call site to remember the rule. Returning `undefined` strips meta entirely; a throwing transform also strips it.
 - `useUndoableState` returns `[value, set, reset]`. `reset()` restores the value captured on first render and clears the bound scope's history. `reset(next)` overrides with a specific value. Reset is **not undoable** — the scope is wiped.
@@ -132,7 +133,7 @@ Read these pages in order when context is tight:
 - `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles `<input>`, `<textarea>`, `<select>`, and `contenteditable` regions. The check walks `event.composedPath()` so editables inside open shadow roots (Lit / web components) are also recognized.
 - `<AmnesiaShortcuts />` ignores chords with `event.defaultPrevented === true` (an upstream handler already claimed it) and ignores `Alt`-modified chords (`Ctrl+Alt+Z` is not Undo).
 - `target` accepts `HTMLElement | Document | Window | "document" | "window" | null`. The string forms are SSR-safe — they resolve at handler-attach time inside `useEffect`, not at module load.
-- The store is single-flight. Concurrent `push` / `undo` / `redo` while one is pending resolve to `null` and fire `onError({ phase: "busy" })`.
+- The store is single-flight. Concurrent `push` / `amend` / `undo` / `redo` while one is pending resolve to `null` and fire `onError({ phase: "busy" })`.
 - An async op whose `await` outlasts a `clear()` resolves to `null` and fires `onError({ phase: "stale" })`. State has already been cleared.
 - A throwing `redo()` / `undo()` leaves the entry in place and fires `onError({ phase: "undo" | "redo", recoverable: true })`. The application is responsible for retry or recovery.
 - `onError` invocations are deferred until the pending set is empty so handlers may safely re-enter the store.
@@ -208,9 +209,10 @@ guarantees.
 - The history store is in-memory only. Closures are never serialized and the stack does not survive a reload.
 - `Command.redo` and `Command.undo` are required and may be synchronous or return a `Promise<void>`.
 - `Command.do` is optional. When present, it runs once at push time instead of `redo`; it is consumed there and never stored on the entry.
-- `push` / `undo` / `redo` always return `Promise<number | null>`. Synchronous handlers resolve in the same microtask with no observable `pending: true` window.
+- `push` / `amend` / `undo` / `redo` always return `Promise<number | null>`. Synchronous handlers resolve in the same microtask with no observable `pending: true` window.
 - `push(command)` invokes `command.do ?? command.redo` exactly once on insertion unless `{ applied: true }` is passed.
 - `push(...)` always clears the future (redo) stack. No branching is supported in v0.
+- `amend(patch)` updates only the last past entry. Omitted fields preserve previous values; default behavior keeps the previous `undo` and replaces only what the patch supplies.
 - `undo()` pops the most recent past entry, calls its `undo()`, and pushes it onto the future stack. Resolves to the entry id, or `null` when the past stack is empty.
 - `redo()` pops the most recent future entry, calls its `redo()`, and pushes it onto the past stack. Resolves to the entry id, or `null` when the future stack is empty.
 - `clear()` is synchronous. It drops both stacks, bumps `epoch`, empties the pending set, and notifies subscribers exactly once.
@@ -270,11 +272,12 @@ guarantees.
 
 ## Lifecycle Hooks
 
-- Provider options accept `onPush(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
-- The store-level shape (`AmnesiaStoreOptions`) takes the scopeId-free form: `onPush(entry)`, `onUndo(entry)`, `onRedo(entry)`, `onClear()`. The provider api binds scopeId before forwarding.
+- Provider options accept `onPush(entry, scopeId)`, `onAmend(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
+- The store-level shape (`AmnesiaStoreOptions`) takes the scopeId-free form: `onPush(entry)`, `onAmend(entry)`, `onUndo(entry)`, `onRedo(entry)`, `onClear()`. The provider api binds scopeId before forwarding.
 - Hook events are queued during a mutation and dispatched from `notify()` after subscribers fire. They never run before the snapshot is updated.
 - A re-entrancy guard prevents a hook that calls `push` / `undo` / `redo` from causing nested drains: the inner mutation queues its own hook event, and the outer drain picks it up.
 - `onPush` fires exactly once per logical user action: never on coalesce-merge, never on rollback, exactly once per transaction commit.
+- `onAmend` fires once per successful amend.
 - `onClear` fires only when `clear()` actually mutated state. Empty/no-op clears do not fire. Provider-level `clear()` (no arg) fires `onClear` once for each scope that was non-empty.
 - A hook that throws is caught and ignored; the rest of the queue still drains. `metaTransform` failures also do not poison the store — the failing entry's `meta` is stripped before the hook sees it.
 - `metaTransform(meta)` runs every time `meta` is exposed: in the public snapshot's `past` / `future` entries AND in hook payloads. Returning `undefined` strips `meta` from the public form.
@@ -341,6 +344,16 @@ guarantees.
 7. On success, pop the entry from past and append it to future. Increment `version`, remove the pending token, rebuild the snapshot, and notify subscribers. Drain any deferred `onError` calls.
 
 `redo()` follows the symmetric order against the future stack with `phase: "redo"`.
+
+## Exact Amend Lifecycle
+
+`amend(patch)` follows this order:
+
+1. If the store is disposed, resolve to `null`.
+2. If `pendingTokens` is non-empty, schedule `onError({ phase: "busy" })` and resolve to `null`.
+3. Read the last past entry. If none exists, resolve to `null`.
+4. Replace only fields present in `patch` (`redo`, `undo`, `label`, `meta`), preserve the rest, keep the same entry id, and keep the original `pushedAt`.
+5. Replace the last past entry with the amended entry, clear future, increment `version`, rebuild snapshot, and notify subscribers.
 
 ## Keyboard Shortcut Boundaries
 
@@ -426,28 +439,28 @@ would change user behavior after a Ctrl+Z.
 
 ## DevTools Registry vs Lifecycle Hooks vs Subscribers
 
-| Need                                                   | Approach                                                 |
-| ------------------------------------------------------ | -------------------------------------------------------- |
-| External tool / browser extension reads live state     | `<AmnesiaProvider enableDevTools devToolsId="…">`        |
-| AI agent introspects history without touching app code | DevTools registry — `resolve(id)` then call api          |
-| Drive `undo` / `redo` from a debugging UI              | DevTools `triggerUndo` / `triggerRedo`                   |
-| Telemetry on every push / undo / redo / clear          | Provider hooks (`onPush`, `onUndo`, `onRedo`, `onClear`) |
-| React component renders state                          | `useAmnesia()` snapshot — subscribers, not hooks         |
-| Per-scope analytics                                    | Per-scope hook in `scopes={{ canvas: { onPush } }}`      |
-| Forward errors                                         | `onError`                                                |
-| Redact secrets / PII before they leave the store       | `metaTransform`                                          |
-| Need synchronous side effect at mutation time          | NOT a hook — wrap the mutation; hooks are post-notify    |
+| Need                                                   | Approach                                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------------- |
+| External tool / browser extension reads live state     | `<AmnesiaProvider enableDevTools devToolsId="…">`                   |
+| AI agent introspects history without touching app code | DevTools registry — `resolve(id)` then call api                     |
+| Drive `undo` / `redo` from a debugging UI              | DevTools `triggerUndo` / `triggerRedo`                              |
+| Telemetry on every push / amend / undo / redo / clear  | Provider hooks (`onPush`, `onAmend`, `onUndo`, `onRedo`, `onClear`) |
+| React component renders state                          | `useAmnesia()` snapshot — subscribers, not hooks                    |
+| Per-scope analytics                                    | Per-scope hook in `scopes={{ canvas: { onPush } }}`                 |
+| Forward errors                                         | `onError`                                                           |
+| Redact secrets / PII before they leave the store       | `metaTransform`                                                     |
+| Need synchronous side effect at mutation time          | NOT a hook — wrap the mutation; hooks are post-notify               |
 
 ## Lifecycle Hooks vs Subscribers
 
-| Need                                                      | Approach                                                  |
-| --------------------------------------------------------- | --------------------------------------------------------- |
-| Telemetry (analytics, audit log)                          | Provider-level `onPush` / `onUndo` / `onRedo` / `onClear` |
-| Driving UI state ("how many entries on the stack?")       | `useAmnesia()` snapshot — subscribers, not hooks          |
-| Per-scope analytics with different fields per surface     | Per-scope override in `scopes={{ canvas: { onPush } }}`   |
-| Forward errors to a tracker                               | `onError` (existing) — not a lifecycle hook               |
-| Redact secrets / PII before they leave the store          | `metaTransform`                                           |
-| Need to fire side effects synchronously with the mutation | NOT a hook — wrap the mutation; hooks are post-notify     |
+| Need                                                      | Approach                                                              |
+| --------------------------------------------------------- | --------------------------------------------------------------------- |
+| Telemetry (analytics, audit log)                          | Provider-level `onPush` / `onAmend` / `onUndo` / `onRedo` / `onClear` |
+| Driving UI state ("how many entries on the stack?")       | `useAmnesia()` snapshot — subscribers, not hooks                      |
+| Per-scope analytics with different fields per surface     | Per-scope override in `scopes={{ canvas: { onPush } }}`               |
+| Forward errors to a tracker                               | `onError` (existing) — not a lifecycle hook                           |
+| Redact secrets / PII before they leave the store          | `metaTransform`                                                       |
+| Need to fire side effects synchronously with the mutation | NOT a hook — wrap the mutation; hooks are post-notify                 |
 
 ## Reset / Discard / Remove
 
@@ -1237,6 +1250,9 @@ export function App({ children }: { children: React.ReactNode }) {
             onPush={(entry, scopeId) =>
                 logEvent("undo.push", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })
             }
+            onAmend={(entry, scopeId) =>
+                logEvent("undo.amend", { scopeId, entryId: entry.id, label: entry.label, meta: entry.meta })
+            }
             onUndo={(entry, scopeId) => logEvent("undo.undo", { scopeId, entryId: entry.id })}
             onRedo={(entry, scopeId) => logEvent("undo.redo", { scopeId, entryId: entry.id })}
             onClear={(scopeId) => logEvent("undo.clear", { scopeId })}
@@ -1744,7 +1760,7 @@ Prefer:
 
 ## Driving UI From Lifecycle Hooks
 
-Lifecycle hooks (`onPush` / `onUndo` / `onRedo` / `onClear`) are for
+Lifecycle hooks (`onPush` / `onAmend` / `onUndo` / `onRedo` / `onClear`) are for
 side-channel observers — analytics, devtools, audit logs. They are NOT a
 substitute for subscribing to the snapshot.
 
@@ -1778,7 +1794,7 @@ metaTransform: (meta) => {
 Prefer:
 
 - pure transforms only (`return { ...meta, secret: undefined }` etc.)
-- emit telemetry from `onPush` / `onUndo` / `onRedo` instead, which fire
+- emit telemetry from `onPush` / `onAmend` / `onUndo` / `onRedo` instead, which fire
   exactly once per logical action
 
 ## Calling `store.push` From Inside Transaction `work`

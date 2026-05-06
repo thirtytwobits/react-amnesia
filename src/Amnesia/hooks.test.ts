@@ -63,6 +63,20 @@ describe("createAmnesiaStore — lifecycle hooks", () => {
         expect(onRedo.mock.calls[0]![0]).toMatchObject({ label: "first" });
     });
 
+    it("fires onAmend after a successful amend of the top entry", async () => {
+        const onAmend = vi.fn();
+        const store = createAmnesiaStore({ onAmend });
+        await store.push({
+            label: "first",
+            redo: () => undefined,
+            undo: () => undefined,
+        });
+        await store.amend({ label: "first-refined" });
+
+        expect(onAmend).toHaveBeenCalledTimes(1);
+        expect(onAmend.mock.calls[0]![0]).toMatchObject({ label: "first-refined" });
+    });
+
     it("fires onClear once when clear() actually clears something", async () => {
         const onClear = vi.fn();
         const store = createAmnesiaStore({ onClear });
@@ -91,6 +105,19 @@ describe("createAmnesiaStore — lifecycle hooks", () => {
 
         // Subscribers see the new past length first; the hook fires afterward.
         expect(sequence).toEqual(["subscriber:past=1", "onPush:past=1"]);
+    });
+
+    it("fires onAmend AFTER subscribers see the amended snapshot", async () => {
+        const sequence: string[] = [];
+        const store = createAmnesiaStore({
+            onAmend: (entry) => sequence.push(`onAmend:label=${entry.label ?? "?"}`),
+        });
+        await store.push({ label: "first", redo: () => undefined, undo: () => undefined });
+        store.subscribe(() => sequence.push(`subscriber:label=${store.getSnapshot().past[0]?.label ?? "?"}`));
+
+        await store.amend({ label: "refined" });
+
+        expect(sequence).toEqual(["subscriber:label=refined", "onAmend:label=refined"]);
     });
 
     it("a throwing hook does not poison the store", async () => {
@@ -248,11 +275,12 @@ describe("createAmnesiaStore — lifecycle hooks", () => {
 describe("AmnesiaProviderApi — scopeId-bound hooks", () => {
     it("binds the scopeId before invoking the user-supplied hooks", async () => {
         const onPush = vi.fn();
+        const onAmend = vi.fn();
         const onUndo = vi.fn();
         const onRedo = vi.fn();
         const onClear = vi.fn();
 
-        const api = createAmnesiaProviderApi({ onPush, onUndo, onRedo, onClear });
+        const api = createAmnesiaProviderApi({ onPush, onAmend, onUndo, onRedo, onClear });
         const a = api.getScope("a");
         const b = api.getScope("b");
 
@@ -266,11 +294,14 @@ describe("AmnesiaProviderApi — scopeId-bound hooks", () => {
             { label: "b-1", scopeId: "b" },
         ]);
 
+        await a.amend({ label: "a-1-refined" });
+        expect(onAmend).toHaveBeenCalledWith(expect.objectContaining({ label: "a-1-refined" }), "a");
+
         await a.undo();
-        expect(onUndo).toHaveBeenCalledWith(expect.objectContaining({ label: "a-1" }), "a");
+        expect(onUndo).toHaveBeenCalledWith(expect.objectContaining({ label: "a-1-refined" }), "a");
 
         await a.redo();
-        expect(onRedo).toHaveBeenCalledWith(expect.objectContaining({ label: "a-1" }), "a");
+        expect(onRedo).toHaveBeenCalledWith(expect.objectContaining({ label: "a-1-refined" }), "a");
 
         a.clear();
         b.clear();
