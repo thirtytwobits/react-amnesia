@@ -341,4 +341,33 @@ describe("AmnesiaProviderApi — scopeId-bound hooks", () => {
         const cleared = new Set(onClear.mock.calls.map((c) => c[0]));
         expect(cleared).toEqual(new Set(["a", "b"]));
     });
+
+    it("subscribeScopeIds fires only when the scope set grows (including clear of an unknown scope)", () => {
+        const api = createAmnesiaProviderApi();
+        const listener = vi.fn();
+        const unsubscribe = api.subscribeScopeIds(listener);
+
+        expect(api.getScopeIds()).toEqual([]);
+
+        api.getScope("a");
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(api.getScopeIds()).toEqual(["a"]);
+
+        // Existing scope lookup does not change the set.
+        api.getScope("a");
+        expect(listener).toHaveBeenCalledTimes(1);
+
+        // clear(scopeId) lazily creates unknown scopes before clearing.
+        api.clear("b");
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(api.getScopeIds()).toEqual(["a", "b"]);
+
+        // Clearing an existing scope does not change ids.
+        api.clear("b");
+        expect(listener).toHaveBeenCalledTimes(2);
+
+        unsubscribe();
+        api.getScope("c");
+        expect(listener).toHaveBeenCalledTimes(2);
+    });
 });

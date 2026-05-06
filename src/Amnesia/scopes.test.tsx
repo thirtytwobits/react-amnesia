@@ -209,6 +209,41 @@ describe("multi-scope routing", () => {
         expect(api.getScope("b").getSnapshot().canUndo).toBe(false);
     });
 
+    it("useAmnesiaScopes keeps scopeIds live as scopes are lazily created", async () => {
+        function App() {
+            const { activeScopeId, scopeIds } = useAmnesiaScopes();
+            const api = useAmnesiaProviderApi();
+            return (
+                <div>
+                    <output data-testid="active">{activeScopeId}</output>
+                    <output data-testid="scope-ids">{scopeIds.join(",")}</output>
+                    <button onClick={() => api.getScope("canvas")}>create-canvas</button>
+                    <button onClick={() => api.clear("props")}>clear-props</button>
+                </div>
+            );
+        }
+
+        const user = userEvent.setup();
+        render(
+            <AmnesiaProvider>
+                <App />
+            </AmnesiaProvider>,
+        );
+
+        expect(screen.getByTestId("active").textContent).toBe("default");
+        expect(screen.getByTestId("scope-ids").textContent).toBe("");
+
+        await user.click(screen.getByText("create-canvas"));
+        expect(screen.getByTestId("active").textContent).toBe("default");
+        expect(screen.getByTestId("scope-ids").textContent).toBe("canvas");
+
+        // clear("props") lazily instantiates that scope, which should also
+        // refresh scopeIds even though the active scope is unchanged.
+        await user.click(screen.getByText("clear-props"));
+        expect(screen.getByTestId("active").textContent).toBe("default");
+        expect(screen.getByTestId("scope-ids").textContent).toBe("canvas,props");
+    });
+
     it("applies per-scope option overrides via the provider's `scopes` prop", async () => {
         let externalApi: ReturnType<typeof useAmnesiaProviderApi> | null = null;
         function Probe() {

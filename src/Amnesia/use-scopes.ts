@@ -89,9 +89,8 @@ export function useAmnesiaFocusClaim(scopeId: string): AmnesiaFocusClaimHandlers
 
 /**
  * View of the multi-scope provider. Re-renders when the active scope id
- * changes. `scopeIds` is a snapshot of the currently-known scopes; new
- * scopes created lazily via `useAmnesia(...)` calls will not appear until
- * the next active-scope change forces a re-render.
+ * changes and when the registered scope id set changes (lazy scope
+ * creation).
  */
 export interface UseAmnesiaScopesResult {
     /** Currently active scope id. */
@@ -116,10 +115,11 @@ export interface UseAmnesiaScopesResult {
 export function useAmnesiaScopes(): UseAmnesiaScopesResult {
     const api = useAmnesiaProviderApi();
     const activeScopeId = useSyncExternalStore(api.subscribeActive, api.getActiveScopeId, api.getActiveScopeId);
+    const scopeIds = useSyncExternalStore(api.subscribeScopeIds, api.getScopeIds, api.getScopeIds);
     const clear = useCallback((scopeId?: string) => api.clear(scopeId), [api]);
     return {
         activeScopeId,
-        scopeIds: api.getScopeIds(),
+        scopeIds,
         clear,
     };
 }
