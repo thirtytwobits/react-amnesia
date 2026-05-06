@@ -75,6 +75,7 @@ single history entry, so a single undo reverts the entire burst.
 | ------------------------ | ----------------------------------------------------------------------------------- |
 | `react-amnesia/core`     | Pure undo/redo runtime. No `react-mnemonic` dependency.                             |
 | `react-amnesia/mnemonic` | You want `usePersistedUndoableState` to combine undo with `react-mnemonic` storage. |
+| `react-amnesia/native`   | You need native editable detection / `document.execCommand("undo" \| "redo")` helpers. |
 | `react-amnesia`          | Top-level entrypoint that re-exports `core`. Drop-in default for most apps.         |
 
 ## Imperative commands

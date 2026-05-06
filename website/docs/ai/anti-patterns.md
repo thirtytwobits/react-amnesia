@@ -584,7 +584,7 @@ Wrong:
 
 Prefer:
 
-- `import` and `import type` from `react-amnesia`, `react-amnesia/core`, or `react-amnesia/mnemonic`
+- `import` and `import type` from `react-amnesia`, `react-amnesia/core`, `react-amnesia/mnemonic`, or `react-amnesia/native`
 - checking `src/index.ts`, `package.json`, and the API docs before assuming a surface is missing
 
 ## Treating The Provider As Optional

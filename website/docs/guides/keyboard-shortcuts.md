@@ -30,17 +30,36 @@ export function App({ children }: { children: React.ReactNode }) {
 
 ## Skipping native editables
 
-By default, chords originating from a native editable element (`<input>`,
-`<textarea>`, `<select>`, or `contenteditable`) are **ignored**. The
-browser's own undo handles those, and stealing the chord usually breaks
-user expectations. The check walks `event.composedPath()` so editables
-inside an open shadow root (Lit / web components) are also recognized.
+By default, chords originating from a native editable element are
+**ignored**. This includes text-like `<input>` types (for example `text`,
+`email`, `search`, `tel`, `url`, `password`, and `number`), plus
+`<textarea>`, `<select>`, and `contenteditable`. The browser's own undo
+handles those, and stealing the chord usually breaks user expectations.
+The check walks `event.composedPath()` so editables inside an open shadow
+root (Lit / web components) are also recognized.
 
 If you want to override that — e.g. inside a canvas region with no native
 editables — opt out:
 
 ```tsx
 <AmnesiaShortcuts skipEditableTargets={false} />
+```
+
+## Native menu integration
+
+For Electron/Tauri edit menus (or any non-keyboard "Undo" trigger), use
+`react-amnesia/native`:
+
+```ts
+import { dispatchNativeUndo, isNativeEditableElement } from "react-amnesia/native";
+
+function handleUndoMenuClick() {
+    if (isNativeEditableElement(document.activeElement)) {
+        dispatchNativeUndo("undo");
+        return;
+    }
+    // Otherwise call your app-level amnesia undo.
+}
 ```
 
 ## Disabling globally

@@ -12,6 +12,7 @@
  */
 
 import { useEffect } from "react";
+import { isNativeEditableElement } from "../native";
 import { useAmnesiaProviderApi } from "./provider";
 
 /**
@@ -50,9 +51,9 @@ export interface AmnesiaShortcutsProps {
 
     /**
      * When `true`, shortcuts are ignored while focus is on a native editable
-     * surface (`<input>`, `<textarea>`, `<select>`, or `contenteditable`).
-     * Browsers ship their own undo stack for those, and stealing the chord
-     * usually breaks user expectations.
+     * surface (text-like `<input>` types, `<textarea>`, `<select>`, or
+     * `contenteditable`). Browsers ship their own undo stack for those, and
+     * stealing the chord usually breaks user expectations.
      *
      * The check is **shadow-DOM transparent**: events that originate inside
      * an open shadow root whose deep target is editable are also skipped,
@@ -147,7 +148,8 @@ function resolveTarget(target: AmnesiaShortcutsTarget | undefined): EventTarget 
 
 /**
  * Determine whether a keydown event originated inside a native editable
- * region (`<input>`, `<textarea>`, `<select>`, or `contenteditable`).
+ * region (text-like `<input>`, `<textarea>`, `<select>`, or
+ * `contenteditable`).
  *
  * Walks `event.composedPath()` so editables inside open shadow roots are
  * detected even when `event.target` has been retargeted to the host. Falls
@@ -157,10 +159,7 @@ function isEditableTarget(event: KeyboardEvent): boolean {
     const composed: EventTarget[] = typeof event.composedPath === "function" ? event.composedPath() : [];
     const candidates: ReadonlyArray<EventTarget> = composed.length > 0 ? composed : event.target ? [event.target] : [];
     for (const node of candidates) {
-        if (!(node instanceof HTMLElement)) continue;
-        const tag = node.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-        if (node.isContentEditable) return true;
+        if (isNativeEditableElement(node)) return true;
     }
     return false;
 }
