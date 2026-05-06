@@ -4,8 +4,8 @@
 /**
  * @fileoverview Framework-agnostic implementation of the Amnesia store.
  *
- * The store exposes `push`, `undo`, `redo`, `clear`, `dispose`, `subscribe`,
- * and `getSnapshot`. It does not depend on React. The provider in
+ * The store exposes `push`, `amend`, `undo`, `redo`, `clear`, `dispose`,
+ * `subscribe`, and `getSnapshot`. It does not depend on React. The provider in
  * `provider.tsx` wraps this in a Context so React components can consume it
  * via `useAmnesia()`.
  *
@@ -23,6 +23,7 @@
  */
 
 import type {
+    AmendPatch,
     Amnesia,
     AmnesiaErrorContext,
     AmnesiaErrorHandler,
@@ -57,6 +58,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     const coalesceWindowMs = Math.max(0, options.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS);
     const onError = options.onError ?? defaultOnError;
     const onPushHook = options.onPush;
+    const onAmendHook = options.onAmend;
     const onUndoHook = options.onUndo;
     const onRedoHook = options.onRedo;
     const onClearHook = options.onClear;
@@ -107,6 +109,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
     // drain, with a re-entrancy guard mirroring `errorQueue`.
     type HookEvent =
         | { kind: "push"; entry: HistoryEntry }
+        | { kind: "amend"; entry: HistoryEntry }
         | { kind: "undo"; entry: HistoryEntry }
         | { kind: "redo"; entry: HistoryEntry }
         | { kind: "clear" };
@@ -152,6 +155,9 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
                     switch (event.kind) {
                         case "push":
                             onPushHook?.(event.entry);
+                            break;
+                        case "amend":
+                            onAmendHook?.(event.entry);
                             break;
                         case "undo":
                             onUndoHook?.(event.entry);
@@ -375,6 +381,43 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
                 return entry.id;
             },
         );
+    };
+
+    const amend: Amnesia["amend"] = async (patch: AmendPatch): Promise<number | null> => {
+        if (disposed) return null;
+        if (pendingTokens.size > 0) {
+            scheduleError(undefined, buildErrorContext("busy", true));
+            return null;
+        }
+        const previous = past[past.length - 1];
+        if (previous === undefined) return null;
+
+        const amended: InternalEntry = {
+            id: previous.id,
+            pushedAt: nowMs(),
+            redo: patch.redo ?? previous.redo,
+            undo: patch.undo ?? previous.undo,
+            ...(patch.label !== undefined
+                ? { label: patch.label }
+                : previous.label !== undefined
+                  ? { label: previous.label }
+                  : {}),
+            ...(previous.coalesceKey !== undefined ? { coalesceKey: previous.coalesceKey } : {}),
+            ...(patch.meta !== undefined
+                ? { meta: patch.meta }
+                : previous.meta !== undefined
+                  ? { meta: previous.meta }
+                  : {}),
+        };
+
+        past = [...past.slice(0, -1), amended];
+        future = [];
+        version += 1;
+        if (onAmendHook) {
+            hookQueue.push({ kind: "amend", entry: toPublic(amended, metaTransform) });
+        }
+        notify();
+        return amended.id;
     };
 
     const undo: Amnesia["undo"] = (): Promise<number | null> => {
@@ -712,7 +755,7 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
 
     const getSnapshot: Amnesia["getSnapshot"] = () => snapshot;
 
-    return { push, undo, redo, transaction, clear, dispose, subscribe, getSnapshot };
+    return { push, amend, undo, redo, transaction, clear, dispose, subscribe, getSnapshot };
 }
 
 type MetaTransform = (meta: Record<string, unknown>) => Record<string, unknown> | undefined;

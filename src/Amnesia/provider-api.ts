@@ -32,6 +32,7 @@ export interface ScopeOptions {
     coalesceWindowMs?: number;
     onError?: AmnesiaErrorHandler;
     onPush?: (entry: HistoryEntry, scopeId: string) => void;
+    onAmend?: (entry: HistoryEntry, scopeId: string) => void;
     onUndo?: (entry: HistoryEntry, scopeId: string) => void;
     onRedo?: (entry: HistoryEntry, scopeId: string) => void;
     onClear?: (scopeId: string) => void;
@@ -137,6 +138,12 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         if (onPush !== undefined) {
             const bound = onPush;
             merged.onPush = (entry: HistoryEntry) => bound(entry, scopeId);
+        }
+
+        const onAmend = override?.onAmend !== undefined ? override.onAmend : providerDefaults.onAmend;
+        if (onAmend !== undefined) {
+            const bound = onAmend;
+            merged.onAmend = (entry: HistoryEntry) => bound(entry, scopeId);
         }
 
         const onUndo = override?.onUndo !== undefined ? override.onUndo : providerDefaults.onUndo;

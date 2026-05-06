@@ -99,6 +99,7 @@ export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
         capacity,
         coalesceWindowMs,
         onError,
+        onAmend,
         scopes,
         enableDevTools,
         devToolsId,
@@ -114,6 +115,7 @@ export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
             ...(capacity !== undefined ? { capacity } : {}),
             ...(coalesceWindowMs !== undefined ? { coalesceWindowMs } : {}),
             ...(onError !== undefined ? { onError } : {}),
+            ...(onAmend !== undefined ? { onAmend } : {}),
             ...(scopes !== undefined ? { scopes } : {}),
         });
     }

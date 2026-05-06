@@ -210,6 +210,34 @@ export interface PushOptions {
 }
 
 /**
+ * Partial replacement payload for `amend(patch)`.
+ *
+ * Targets only the most recent committed past entry.
+ *
+ * Typical usage keeps the original `undo` and supplies only a refined
+ * `redo`, so one undo still restores the pre-amend state.
+ */
+export interface AmendPatch {
+    /**
+     * Replacement redo closure for the last entry. Omit to preserve the
+     * existing redo.
+     */
+    redo?: (signal: AbortSignal) => void | Promise<void>;
+
+    /**
+     * Replacement undo closure for the last entry. Omit to preserve the
+     * existing undo.
+     */
+    undo?: (signal: AbortSignal) => void | Promise<void>;
+
+    /** Replacement label. Omit to preserve the existing label. */
+    label?: string;
+
+    /** Replacement metadata. Omit to preserve existing metadata. */
+    meta?: Record<string, unknown>;
+}
+
+/**
  * Error reporter used by the provider when something goes wrong during
  * `push` / `undo` / `redo`.
  *
@@ -309,6 +337,12 @@ export interface AmnesiaStoreOptions {
      */
     onPush?: (entry: HistoryEntry) => void;
 
+    /**
+     * Lifecycle hook fired after a successful `amend` updates the most recent
+     * past entry.
+     */
+    onAmend?: (entry: HistoryEntry) => void;
+
     /** Lifecycle hook fired after a successful `undo`. */
     onUndo?: (entry: HistoryEntry) => void;
 
@@ -341,7 +375,10 @@ export interface AmnesiaStoreOptions {
  * Extends {@link AmnesiaStoreOptions} but exposes scopeId-aware lifecycle
  * hooks so the same handler can serve every scope under one provider.
  */
-export interface AmnesiaProviderOptions extends Omit<AmnesiaStoreOptions, "onPush" | "onUndo" | "onRedo" | "onClear"> {
+export interface AmnesiaProviderOptions extends Omit<
+    AmnesiaStoreOptions,
+    "onPush" | "onAmend" | "onUndo" | "onRedo" | "onClear"
+> {
     /**
      * Lifecycle hook fired after a successful `push` commits a new entry to
      * the past stack of `scopeId`. Coalesce-merges do **not** fire this —
@@ -356,6 +393,12 @@ export interface AmnesiaProviderOptions extends Omit<AmnesiaStoreOptions, "onPus
      * the scope's `metaTransform`.
      */
     onPush?: (entry: HistoryEntry, scopeId: string) => void;
+
+    /**
+     * Lifecycle hook fired after a successful `amend` on `scopeId`. The
+     * `entry` is the updated top-of-past entry.
+     */
+    onAmend?: (entry: HistoryEntry, scopeId: string) => void;
 
     /**
      * Lifecycle hook fired after a successful `undo` on `scopeId`. The
@@ -441,6 +484,18 @@ export interface Amnesia {
      *   initial application; the entry is not added to the stack.
      */
     push: (command: Command, options?: PushOptions) => Promise<number | null>;
+
+    /**
+     * Amend the most recent past entry in place.
+     *
+     * - Targets `past[past.length - 1]` only; no key/window matching.
+     * - Preserves original fields unless overridden by `patch`.
+     * - Clears the future stack (same as push).
+     *
+     * Resolves to the amended entry id, or `null` when no amend occurred
+     * (empty past, busy, disposed).
+     */
+    amend: (patch: AmendPatch) => Promise<number | null>;
 
     /**
      * Undo the most recent past entry. No-op when `canUndo` is false.

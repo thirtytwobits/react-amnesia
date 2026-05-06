@@ -7,13 +7,13 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { useAmnesiaProviderApi, useAmnesiaScope } from "./provider";
-import type { Amnesia, AmnesiaState, Command, PushOptions, TransactionApi } from "./types";
+import type { AmendPatch, Amnesia, AmnesiaState, Command, PushOptions, TransactionApi } from "./types";
 
 /**
  * Hook returning the current Amnesia state plus stable action callbacks.
  *
  * The returned object is reconstructed on every store mutation but the
- * action functions (`push`, `undo`, `redo`, `clear`) remain referentially
+ * action functions (`push`, `amend`, `undo`, `redo`, `clear`) remain referentially
  * stable across renders, so they can be used in `useEffect` deps without
  * causing re-runs.
  *
@@ -25,6 +25,8 @@ export interface UseAmnesiaResult extends AmnesiaState {
     scopeId: string;
     /** Push a new command. See {@link Amnesia.push}. */
     push: (command: Command, options?: PushOptions) => Promise<number | null>;
+    /** Amend the most recent entry. See {@link Amnesia.amend}. */
+    amend: (patch: AmendPatch) => Promise<number | null>;
     /** Undo the most recent past entry. See {@link Amnesia.undo}. */
     undo: () => Promise<number | null>;
     /** Redo the most recent future entry. See {@link Amnesia.redo}. */
@@ -64,6 +66,7 @@ export function useAmnesia(scopeId?: string): UseAmnesiaResult {
     const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 
     const push = useCallback<Amnesia["push"]>((command, options) => store.push(command, options), [store]);
+    const amend = useCallback<Amnesia["amend"]>((patch) => store.amend(patch), [store]);
     const undo = useCallback<Amnesia["undo"]>(() => store.undo(), [store]);
     const redo = useCallback<Amnesia["redo"]>(() => store.redo(), [store]);
     const clear = useCallback<Amnesia["clear"]>(() => store.clear(), [store]);
@@ -91,6 +94,7 @@ export function useAmnesia(scopeId?: string): UseAmnesiaResult {
         epoch: state.epoch,
         pending: state.pending,
         push,
+        amend,
         undo,
         redo,
         transaction,

@@ -21,9 +21,10 @@ guarantees.
 - The history store is in-memory only. Closures are never serialized and the stack does not survive a reload.
 - `Command.redo` and `Command.undo` are required and may be synchronous or return a `Promise<void>`.
 - `Command.do` is optional. When present, it runs once at push time instead of `redo`; it is consumed there and never stored on the entry.
-- `push` / `undo` / `redo` always return `Promise<number | null>`. Synchronous handlers resolve in the same microtask with no observable `pending: true` window.
+- `push` / `amend` / `undo` / `redo` always return `Promise<number | null>`. Synchronous handlers resolve in the same microtask with no observable `pending: true` window.
 - `push(command)` invokes `command.do ?? command.redo` exactly once on insertion unless `{ applied: true }` is passed.
 - `push(...)` always clears the future (redo) stack. No branching is supported in v0.
+- `amend(patch)` updates only the last past entry. Omitted fields preserve previous values; default behavior keeps the previous `undo` and replaces only what the patch supplies.
 - `undo()` pops the most recent past entry, calls its `undo()`, and pushes it onto the future stack. Resolves to the entry id, or `null` when the past stack is empty.
 - `redo()` pops the most recent future entry, calls its `redo()`, and pushes it onto the past stack. Resolves to the entry id, or `null` when the future stack is empty.
 - `clear()` is synchronous. It drops both stacks, bumps `epoch`, empties the pending set, and notifies subscribers exactly once.
@@ -83,11 +84,12 @@ guarantees.
 
 ## Lifecycle Hooks
 
-- Provider options accept `onPush(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
-- The store-level shape (`AmnesiaStoreOptions`) takes the scopeId-free form: `onPush(entry)`, `onUndo(entry)`, `onRedo(entry)`, `onClear()`. The provider api binds scopeId before forwarding.
+- Provider options accept `onPush(entry, scopeId)`, `onAmend(entry, scopeId)`, `onUndo(entry, scopeId)`, `onRedo(entry, scopeId)`, `onClear(scopeId)`. Per-scope overrides via `scopes={{ x: { onPush } }}` win over provider-level handlers.
+- The store-level shape (`AmnesiaStoreOptions`) takes the scopeId-free form: `onPush(entry)`, `onAmend(entry)`, `onUndo(entry)`, `onRedo(entry)`, `onClear()`. The provider api binds scopeId before forwarding.
 - Hook events are queued during a mutation and dispatched from `notify()` after subscribers fire. They never run before the snapshot is updated.
 - A re-entrancy guard prevents a hook that calls `push` / `undo` / `redo` from causing nested drains: the inner mutation queues its own hook event, and the outer drain picks it up.
 - `onPush` fires exactly once per logical user action: never on coalesce-merge, never on rollback, exactly once per transaction commit.
+- `onAmend` fires once per successful amend.
 - `onClear` fires only when `clear()` actually mutated state. Empty/no-op clears do not fire. Provider-level `clear()` (no arg) fires `onClear` once for each scope that was non-empty.
 - A hook that throws is caught and ignored; the rest of the queue still drains. `metaTransform` failures also do not poison the store — the failing entry's `meta` is stripped before the hook sees it.
 - `metaTransform(meta)` runs every time `meta` is exposed: in the public snapshot's `past` / `future` entries AND in hook payloads. Returning `undefined` strips `meta` from the public form.
@@ -154,6 +156,16 @@ guarantees.
 7. On success, pop the entry from past and append it to future. Increment `version`, remove the pending token, rebuild the snapshot, and notify subscribers. Drain any deferred `onError` calls.
 
 `redo()` follows the symmetric order against the future stack with `phase: "redo"`.
+
+## Exact Amend Lifecycle
+
+`amend(patch)` follows this order:
+
+1. If the store is disposed, resolve to `null`.
+2. If `pendingTokens` is non-empty, schedule `onError({ phase: "busy" })` and resolve to `null`.
+3. Read the last past entry. If none exists, resolve to `null`.
+4. Replace only fields present in `patch` (`redo`, `undo`, `label`, `meta`), preserve the rest, and keep the same entry id.
+5. Replace the last past entry with the amended entry, clear future, increment `version`, rebuild snapshot, and notify subscribers.
 
 ## Keyboard Shortcut Boundaries
 
