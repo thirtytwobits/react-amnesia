@@ -88,7 +88,11 @@ function isNativeEditableSelf(element: Element): boolean {
 export function isNativeEditableElement(target: EventTarget | null): boolean {
     const initial = resolveInitialElement(target);
     if (!initial) return false;
-    for (let current: Element | null = resolveOpenShadowActiveElement(initial); current; current = nextElementInChain(current)) {
+    for (
+        let current: Element | null = resolveOpenShadowActiveElement(initial);
+        current;
+        current = nextElementInChain(current)
+    ) {
         if (isNativeEditableSelf(current)) return true;
     }
     return false;
