@@ -203,3 +203,27 @@ describe("AmnesiaShortcuts — shadow-DOM editable detection", () => {
         expect(screen.getByTestId("count").textContent).toBe("1");
     });
 });
+
+describe("AmnesiaShortcuts — editable type filtering", () => {
+    it("does not skip undo on non-text inputs such as checkbox", async () => {
+        const user = userEvent.setup();
+        render(
+            <AmnesiaProvider>
+                <div>
+                    <Counter shortcuts={<AmnesiaShortcuts skipEditableTargets={true} />} />
+                    <input data-testid="check" type="checkbox" />
+                </div>
+            </AmnesiaProvider>,
+        );
+
+        await user.click(screen.getByText("inc"));
+        expect(screen.getByTestId("count").textContent).toBe("1");
+
+        const check = screen.getByTestId("check");
+        check.focus();
+        fireEvent.keyDown(check, { key: "z", ctrlKey: true });
+        await flush();
+
+        expect(screen.getByTestId("count").textContent).toBe("0");
+    });
+});

@@ -33,6 +33,15 @@
             "import": "./dist/mnemonic.js",
             "require": "./dist/mnemonic.cjs",
             "default": "./dist/mnemonic.js"
+        },
+        "./native": {
+            "types": {
+                "import": "./dist/native.d.ts",
+                "require": "./dist/native.d.cts"
+            },
+            "import": "./dist/native.js",
+            "require": "./dist/native.cjs",
+            "default": "./dist/native.js"
         }
     },
     "files": [

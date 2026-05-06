@@ -44,7 +44,8 @@ When adding undoable behavior to this repository or to example apps built with
 - Two pushes coalesce only when they share the same non-empty `coalesceKey` and pass the effective coalescing window for that push (`command.coalesceWindowMs` override or scope default).
 - Capacity defaults to `100`. When the limit is reached, the oldest past entry is dropped silently — do not rely on history for audit trails.
 - `clear()` is synchronous. It drops both stacks, bumps the `epoch` counter, empties the pending set, and notifies subscribers once.
-- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles `<input>`, `<textarea>`, `<select>`, and `contenteditable` regions. The check walks `event.composedPath()` so editables inside open shadow roots (Lit / web components) are also recognized.
+- `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles text-like `<input>` types plus `<textarea>`, `<select>`, and `contenteditable` regions. The check walks `event.composedPath()` so editables inside open shadow roots (Lit / web components) are also recognized.
+- `react-amnesia/native` exports `isNativeEditableElement(target)` and `dispatchNativeUndo("undo" | "redo")` for desktop-shell/menu integrations that need native editable routing outside keyboard events.
 - `<AmnesiaShortcuts />` ignores chords with `event.defaultPrevented === true` (an upstream handler already claimed it) and ignores `Alt`-modified chords (`Ctrl+Alt+Z` is not Undo).
 - `target` accepts `HTMLElement | Document | Window | "document" | "window" | null`. The string forms are SSR-safe — they resolve at handler-attach time inside `useEffect`, not at module load.
 - The store is single-flight. Concurrent `push` / `amend` / `undo` / `redo` while one is pending resolve to `null` and fire `onError({ phase: "busy" })`.
@@ -55,6 +56,7 @@ When adding undoable behavior to this repository or to example apps built with
 - Do not put authentication tokens, refresh tokens, session IDs, or other secrets into command `meta` — snapshots are exposed to descendant components and devtools.
 - Consumer code should import published values and types from `react-amnesia`, not internal paths or local ambient shims.
 - Import from `react-amnesia/core` when persistence is not needed; that entrypoint does not require `react-mnemonic`.
+- Import from `react-amnesia/native` for DOM-native helpers (`isNativeEditableElement`, `dispatchNativeUndo`) used by desktop-shell menu integrations.
 
 ## Decision Checklist
 

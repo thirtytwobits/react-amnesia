@@ -124,7 +124,7 @@ guarantees.
 
 ## Type Sourcing Rules
 
-- Import values from `react-amnesia` (or `react-amnesia/core` / `react-amnesia/mnemonic`), not internal package paths.
+- Import values from `react-amnesia` (or `react-amnesia/core`, `react-amnesia/mnemonic`, `react-amnesia/native`), not internal package paths.
 - Import exported types from `react-amnesia` with `import type`.
 - Do not create local `react-amnesia.d.ts` files.
 - Do not write `declare module "react-amnesia"` in consumer code.
@@ -175,7 +175,8 @@ guarantees.
 - Bindings: `Ctrl+Z` / `Cmd+Z` for undo; `Ctrl+Shift+Z`, `Cmd+Shift+Z`, and `Ctrl+Y` for redo.
 - Ignores any keydown whose `event.defaultPrevented === true` — an upstream handler has already claimed the chord.
 - Ignores any keydown with `event.altKey === true`. Alt-modified chords are intentionally separate from Undo / Redo.
-- When `skipEditableTargets` is `true` (default), chords are ignored when `event.composedPath()` contains an `<input>`, `<textarea>`, `<select>`, or `contenteditable` element. The composed-path walk is **shadow-DOM transparent**: editables inside open shadow roots are recognized even though `event.target` has been retargeted to the host. Falls back to `event.target` only when `composedPath` is unavailable.
+- When `skipEditableTargets` is `true` (default), chords are ignored when `event.composedPath()` contains a text-like `<input>` type (for example `text`, `email`, `search`, `tel`, `url`, `password`, `number`), `<textarea>`, `<select>`, or a `contenteditable` surface. Non-text inputs like `checkbox`, `radio`, and `range` do not short-circuit undo routing. The composed-path walk is **shadow-DOM transparent**: editables inside open shadow roots are recognized even though `event.target` has been retargeted to the host. Falls back to `event.target` only when `composedPath` is unavailable.
+- For non-keyboard triggers (native Edit menu actions in Electron/Tauri), import from `react-amnesia/native`: `isNativeEditableElement(target)` and `dispatchNativeUndo("undo" | "redo")`.
 - When `preventDefault` is `true` (default), `event.preventDefault()` is called whenever the chord matches and shortcuts are not skipped — regardless of whether an entry exists to undo / redo. This is required because async `undo` / `redo` cannot synchronously decide whether to suppress the browser's native chord.
 - When `enabled` is `false`, the listener is detached. Toggle this rather than unmounting the component if a modal needs to own the chord temporarily.
 

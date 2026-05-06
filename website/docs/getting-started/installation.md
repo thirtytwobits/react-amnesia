@@ -31,6 +31,7 @@ npm install react-mnemonic
 | `react-amnesia`          | Top-level entry point. Re-exports the core surface. Drop-in default.  |
 | `react-amnesia/core`     | Pure undo/redo runtime. No `react-mnemonic` dependency.               |
 | `react-amnesia/mnemonic` | `usePersistedUndoableState` for undoable state that survives reloads. |
+| `react-amnesia/native`   | Native editable detection + browser undo/redo dispatch helpers.       |
 
 ## TypeScript
 

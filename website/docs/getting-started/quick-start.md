@@ -47,9 +47,9 @@ single history entry, so a single undo reverts the entire burst.
   and its `undo` restores the previous one.
 - `<AmnesiaShortcuts />` mounted a `keydown` listener on `window`. It
   routes Ctrl+Z to the active scope (here just the default scope) and
-  ignores chords originating from native editable elements (`<input>`,
-  `<textarea>`, `contenteditable`) so the browser's native input undo keeps
-  working.
+  ignores chords originating from native editable elements (text-like
+  `<input>` types, plus `<textarea>`, `<select>`, and `contenteditable`) so
+  the browser's native input undo keeps working.
 - `coalesceKey: "edit:title"` makes consecutive keystrokes within a few
   hundred milliseconds merge into one entry. A single Ctrl+Z reverts the
   whole burst rather than each character.
