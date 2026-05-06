@@ -21,6 +21,7 @@ import type { Amnesia, AmnesiaErrorHandler, AmnesiaProviderOptions, AmnesiaStore
 
 /** Reserved id for the implicit default scope. */
 export const DEFAULT_SCOPE_ID = "default";
+const EMPTY_SCOPE_IDS: readonly string[] = Object.freeze([]);
 
 /**
  * Per-scope option overrides. Each entry merges over the provider-level
@@ -109,7 +110,7 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
     const stores = new Map<string, Amnesia>();
     const activeListeners = new Set<() => void>();
     const scopeIdListeners = new Set<() => void>();
-    let scopeIdsSnapshot: readonly string[] = [];
+    let scopeIdsSnapshot: readonly string[] = EMPTY_SCOPE_IDS;
     let activeChild: string | undefined;
 
     if (defaultStore) {
