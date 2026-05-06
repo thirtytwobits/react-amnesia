@@ -21,6 +21,7 @@ import type { Amnesia, AmnesiaErrorHandler, AmnesiaProviderOptions, AmnesiaStore
 
 /** Reserved id for the implicit default scope. */
 export const DEFAULT_SCOPE_ID = "default";
+const EMPTY_SCOPE_IDS: readonly string[] = Object.freeze([]);
 
 /**
  * Per-scope option overrides. Each entry merges over the provider-level
@@ -64,8 +65,6 @@ export interface AmnesiaProviderApi {
 
     /**
      * Snapshot of the currently registered scope ids in insertion order.
-     * Returns a fresh array on each call. There is no subscription path for
-     * scope-set changes in this release.
      */
     getScopeIds: () => readonly string[];
 
@@ -77,6 +76,9 @@ export interface AmnesiaProviderApi {
 
     /** Subscribe to active-scope changes. */
     subscribeActive: (listener: () => void) => () => void;
+
+    /** Subscribe to scope-id set changes (scope creation only in v0). */
+    subscribeScopeIds: (listener: () => void) => () => void;
 
     /**
      * Mark `scopeId` as the active claimant. Lazily creates the scope. Pass
@@ -107,10 +109,13 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
 
     const stores = new Map<string, Amnesia>();
     const activeListeners = new Set<() => void>();
+    const scopeIdListeners = new Set<() => void>();
+    let scopeIdsSnapshot: readonly string[] = EMPTY_SCOPE_IDS;
     let activeChild: string | undefined;
 
     if (defaultStore) {
         stores.set(DEFAULT_SCOPE_ID, defaultStore);
+        scopeIdsSnapshot = Object.freeze(Array.from(stores.keys()));
     }
 
     /**
@@ -176,10 +181,12 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         if (existing) return existing;
         const created = createAmnesiaStore(buildOptionsFor(scopeId));
         stores.set(scopeId, created);
+        scopeIdsSnapshot = Object.freeze(Array.from(stores.keys()));
+        notifyScopeIdsChange();
         return created;
     };
 
-    const getScopeIds = (): readonly string[] => Array.from(stores.keys());
+    const getScopeIds = (): readonly string[] => scopeIdsSnapshot;
 
     const getActiveScopeId = (): string => activeChild ?? DEFAULT_SCOPE_ID;
 
@@ -187,6 +194,17 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         // Snapshot listeners so a callback that subscribes/unsubscribes
         // during dispatch does not affect the current tick.
         const dispatch = Array.from(activeListeners);
+        for (const listener of dispatch) {
+            try {
+                listener();
+            } catch {
+                // Subscriber failures are isolated.
+            }
+        }
+    };
+
+    const notifyScopeIdsChange = (): void => {
+        const dispatch = Array.from(scopeIdListeners);
         for (const listener of dispatch) {
             try {
                 listener();
@@ -226,6 +244,13 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         };
     };
 
+    const subscribeScopeIds = (listener: () => void): (() => void) => {
+        scopeIdListeners.add(listener);
+        return () => {
+            scopeIdListeners.delete(listener);
+        };
+    };
+
     const clear = (scopeId?: string): void => {
         if (scopeId === undefined) {
             for (const store of stores.values()) {
@@ -241,6 +266,7 @@ export function createAmnesiaProviderApi(options: AmnesiaProviderApiOptions = {}
         getScopeIds,
         getActiveScopeId,
         subscribeActive,
+        subscribeScopeIds,
         claim,
         release,
         clear,
