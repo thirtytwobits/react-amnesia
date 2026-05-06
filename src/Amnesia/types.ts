@@ -96,8 +96,12 @@ export interface Command {
      * Typical use: rapid keystrokes in a text input share a `coalesceKey` like
      * `"edit:title"` so a single Ctrl+Z undoes the burst rather than each key.
      *
-     * Coalescing also requires that the new push arrives within
-     * `coalesceWindowMs` of the previous one (provider-level setting).
+     * Coalescing also requires passing the effective coalescing window for
+     * this push:
+     * - `command.coalesceWindowMs` when defined, otherwise scope/provider
+     *   `coalesceWindowMs`
+     * - `Number.POSITIVE_INFINITY` disables time-bound checks
+     * - `<= 0` disables coalescing for this push
      */
     coalesceKey?: string;
 

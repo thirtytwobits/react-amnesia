@@ -316,7 +316,10 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
             (cmd: Command) => {
                 const now = nowMs();
                 const previous = past[past.length - 1];
-                const effectiveCoalesceWindowMs = resolveEffectiveCoalesceWindowMs(cmd.coalesceWindowMs, coalesceWindowMs);
+                const effectiveCoalesceWindowMs = resolveEffectiveCoalesceWindowMs(
+                    cmd.coalesceWindowMs,
+                    coalesceWindowMs,
+                );
                 const withinCoalesceWindow =
                     effectiveCoalesceWindowMs === Number.POSITIVE_INFINITY ||
                     (effectiveCoalesceWindowMs !== null &&

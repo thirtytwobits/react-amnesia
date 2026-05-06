@@ -162,7 +162,10 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         let fakeNow = before();
         Date.now = () => fakeNow;
         try {
-            await store.push({ coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined }, { applied: true });
+            await store.push(
+                { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
             fakeNow += 20;
             await store.push(
                 {
@@ -186,7 +189,10 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         let fakeNow = before();
         Date.now = () => fakeNow;
         try {
-            await store.push({ coalesceKey: "drag:node-42", redo: () => undefined, undo: () => undefined }, { applied: true });
+            await store.push(
+                { coalesceKey: "drag:node-42", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
             fakeNow += 100;
             await store.push(
                 {
@@ -210,7 +216,10 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         let fakeNow = before();
         Date.now = () => fakeNow;
         try {
-            await store.push({ coalesceKey: "drag:node-42", redo: () => undefined, undo: () => undefined }, { applied: true });
+            await store.push(
+                { coalesceKey: "drag:node-42", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
             fakeNow += 60_000;
             await store.push(
                 {
@@ -230,7 +239,10 @@ describe("createAmnesiaStore — synchronous behavior", () => {
 
     it("disables coalescing for a push when the command window is zero or negative", async () => {
         const store = createAmnesiaStore({ coalesceWindowMs: 1000 });
-        await store.push({ coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined }, { applied: true });
+        await store.push(
+            { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+            { applied: true },
+        );
         await store.push(
             {
                 coalesceKey: "edit:title",
@@ -255,7 +267,10 @@ describe("createAmnesiaStore — synchronous behavior", () => {
 
     it("does not coalesce when the command window is non-finite (except +Infinity)", async () => {
         const store = createAmnesiaStore({ coalesceWindowMs: 1000 });
-        await store.push({ coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined }, { applied: true });
+        await store.push(
+            { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+            { applied: true },
+        );
         await store.push(
             {
                 coalesceKey: "edit:title",
@@ -275,9 +290,15 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         let fakeNow = before();
         Date.now = () => fakeNow;
         try {
-            await store.push({ coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined }, { applied: true });
+            await store.push(
+                { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
             fakeNow += 20;
-            await store.push({ coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined }, { applied: true });
+            await store.push(
+                { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
         } finally {
             Date.now = before;
         }
