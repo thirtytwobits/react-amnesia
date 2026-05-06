@@ -17,7 +17,7 @@ guarantees.
 
 ## Core Runtime Invariants
 
-- `useAmnesia(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
+- `useAmnesia(...)`, `useAmnesiaLabels(...)`, `useUndoableState(...)`, `useAmnesiaFocusClaim(...)`, `useAmnesiaScopes(...)`, and `<AmnesiaShortcuts />` must run inside an `AmnesiaProvider`.
 - The history store is in-memory only. Closures are never serialized and the stack does not survive a reload.
 - `Command.redo` and `Command.undo` are required and may be synchronous or return a `Promise<void>`.
 - `Command.do` is optional. When present, it runs once at push time instead of `redo`; it is consumed there and never stored on the entry.
@@ -118,6 +118,7 @@ guarantees.
 - Per-scope option overrides on the provider's `scopes` prop are read at scope-creation time and frozen thereafter. Updating the prop after a scope exists has no effect.
 - `useUndoableState` and `usePersistedUndoableState` pin to an explicit `scopeId` (default `"default"`). They do not track the active claim — React state lives in stable component instances and should not migrate scopes when focus moves.
 - `useAmnesia(scopeId?)` does the opposite: with no arg it tracks the active claim; with an arg it pins.
+- `useAmnesiaLabels(scopeId?)` shares the same scope resolution semantics as `useAmnesia`, but selector-renders only when `{ canUndo, canRedo, undoLabel, redoLabel, pending, scopeId }` changes.
 - `<AmnesiaShortcuts />` resolves the target scope at handler time so live focus claims always route the chord without a re-render. `<AmnesiaShortcuts scopeId="..." />` pins.
 - `useAmnesiaFocusClaim(scopeId)` returns capture-phase focus / pointer-down handlers. On the component's unmount it releases its claim if it was active.
 - `clear(scopeId?)` on the provider api (and `useAmnesiaScopes().clear`) iterates every registered scope when called with no argument. With a `scopeId` argument it clears only that scope (lazily creating it if needed). The per-scope store's own `clear()` (e.g. via `useAmnesia(scopeId).clear()`) clears just its own stacks and takes no argument.

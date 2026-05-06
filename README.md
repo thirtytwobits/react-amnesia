@@ -63,6 +63,7 @@ single history entry, so a single undo reverts the entire burst.
 
 - `useState`-shaped hook (`useUndoableState`) for reversible UI state
 - Imperative `push({ redo, undo, label })` for arbitrary actions
+- `useAmnesiaLabels(scopeId?)` selector for stable Undo/Redo menu labels
 - Coalescing for keystroke / drag bursts
 - Capacity-bounded stack so history can't grow without limit
 - Standard keyboard bindings via a single `<AmnesiaShortcuts />` element

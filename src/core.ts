@@ -37,6 +37,8 @@ export type {
 } from "./Amnesia/devtools";
 export { useAmnesia } from "./Amnesia/use";
 export type { UseAmnesiaResult } from "./Amnesia/use";
+export { useAmnesiaLabels } from "./Amnesia/use-labels";
+export type { AmnesiaLabels } from "./Amnesia/use-labels";
 export { useUndoableState } from "./Amnesia/use-undoable-state";
 export type { UndoableReset, UndoableSetter } from "./Amnesia/use-undoable-state";
 export { useAmnesiaFocusClaim, useAmnesiaScopes } from "./Amnesia/use-scopes";
