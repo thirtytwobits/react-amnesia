@@ -67,7 +67,7 @@ export function useUndoableState<T>(
     const [value, setValue] = useState<T>(initial);
 
     // Refs let the setter stay stable while still seeing the latest value
-    // and the latest options (label, coalesceKey, equals).
+    // and the latest options (label, coalesceKey, coalesceWindowMs, equals).
     const valueRef = useRef(value);
     valueRef.current = value;
 
@@ -108,6 +108,7 @@ export function useUndoableState<T>(
                     },
                     ...(opts.label !== undefined ? { label: opts.label } : {}),
                     ...(opts.coalesceKey !== undefined ? { coalesceKey: opts.coalesceKey } : {}),
+                    ...(opts.coalesceWindowMs !== undefined ? { coalesceWindowMs: opts.coalesceWindowMs } : {}),
                 },
                 { applied: true },
             );

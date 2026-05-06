@@ -47,6 +47,7 @@ export function AddItemButton({ list }: { list: { add(item: Item): void; remove(
 | `do(signal)`   | no       | One-shot initial-apply handler. When present, replaces `redo` for the first push. Useful when first-apply mints state (an id) that subsequent replays must reuse. |
 | `label`        | no       | Human-readable label for history UIs.                                                                                                                             |
 | `coalesceKey`  | no       | Merge identity for [coalescing](./coalescing).                                                                                                                    |
+| `coalesceWindowMs` | no   | Per-command coalescing window override. `undefined` uses scope default, `Number.POSITIVE_INFINITY` removes the time bound, and `<= 0` disables coalescing for that push. |
 | `meta`         | no       | Free-form data for tooling. Pass through `metaTransform` to redact secrets.                                                                                       |
 
 All three handlers receive an `AbortSignal` — see the

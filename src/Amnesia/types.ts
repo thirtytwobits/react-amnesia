@@ -102,6 +102,15 @@ export interface Command {
     coalesceKey?: string;
 
     /**
+     * Optional per-command override for coalescing window resolution.
+     *
+     * - `undefined` uses the scope/provider `coalesceWindowMs`.
+     * - `Number.POSITIVE_INFINITY` disables the time bound (pure adjacency).
+     * - `<= 0` disables coalescing for this push.
+     */
+    coalesceWindowMs?: number;
+
+    /**
      * Free-form metadata for tooling. Not interpreted by Amnesia.
      */
     meta?: Record<string, unknown>;
@@ -538,6 +547,12 @@ export interface UseUndoableStateOptions<T> {
      * group bursts (typing, dragging) into one entry.
      */
     coalesceKey?: string;
+
+    /**
+     * Optional per-command coalescing window override applied by the setter.
+     * See `Command.coalesceWindowMs` for semantics.
+     */
+    coalesceWindowMs?: number;
 
     /**
      * Equality predicate used to suppress no-op writes. Defaults to `Object.is`.

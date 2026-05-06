@@ -316,12 +316,18 @@ export function createAmnesiaStore(options: AmnesiaStoreOptions = {}): Amnesia {
             (cmd: Command) => {
                 const now = nowMs();
                 const previous = past[past.length - 1];
+                const effectiveCoalesceWindowMs = resolveEffectiveCoalesceWindowMs(cmd.coalesceWindowMs, coalesceWindowMs);
+                const withinCoalesceWindow =
+                    effectiveCoalesceWindowMs === Number.POSITIVE_INFINITY ||
+                    (effectiveCoalesceWindowMs !== null &&
+                        previous !== undefined &&
+                        now - previous.pushedAt <= effectiveCoalesceWindowMs);
                 const canCoalesce =
                     previous !== undefined &&
                     cmd.coalesceKey !== undefined &&
                     cmd.coalesceKey !== "" &&
                     previous.coalesceKey === cmd.coalesceKey &&
-                    now - previous.pushedAt <= coalesceWindowMs;
+                    withinCoalesceWindow;
 
                 if (canCoalesce && previous !== undefined) {
                     // Replace the redo with the latest one but keep the
@@ -749,6 +755,14 @@ function toPublic(entry: InternalEntry, metaTransform: MetaTransform | undefined
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {
     return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
+}
+
+function resolveEffectiveCoalesceWindowMs(commandValue: number | undefined, scopeValue: number): number | null {
+    if (commandValue === undefined) return scopeValue;
+    if (commandValue === Number.POSITIVE_INFINITY) return Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(commandValue)) return null;
+    if (commandValue <= 0) return null;
+    return commandValue;
 }
 
 function nowMs(): number {

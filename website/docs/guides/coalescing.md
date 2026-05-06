@@ -8,7 +8,8 @@ description: Use coalesceKey so rapid keystrokes or drag frames collapse into on
 
 A single character keystroke or a 60Hz slider drag should not produce one
 history entry per frame. Use `coalesceKey` to merge consecutive pushes that
-arrive within `coalesceWindowMs` of each other.
+arrive within the active coalescing window (`coalesceWindowMs`) of each
+other.
 
 ```tsx
 import { useUndoableState } from "react-amnesia";
@@ -38,8 +39,9 @@ The merged entry keeps:
 
 - Different `coalesceKey` between consecutive pushes
 - Empty `coalesceKey` (treated as "do not coalesce")
-- More than `coalesceWindowMs` (default 400 ms) between pushes
+- More than the effective coalescing window between pushes
 - The previous entry has already been undone (not on top of the past stack)
+- The new push sets `coalesceWindowMs <= 0`
 - The push happens through `tx.push` inside a transaction — composite
   entries never coalesce with neighbors
 
@@ -56,6 +58,26 @@ per-scope when surfaces have different cadences:
 ```tsx
 <AmnesiaProvider scopes={{ canvas: { coalesceWindowMs: 50 } }}>
 ```
+
+### Per-command override
+
+Imperative `push(...)` can override the scope window per command:
+
+```tsx
+push({
+    coalesceKey: "drag:node-42",
+    coalesceWindowMs: Number.POSITIVE_INFINITY,
+    redo: applyFrame,
+    undo: restoreFrame,
+});
+```
+
+Resolution rules:
+
+- `command.coalesceWindowMs` (when provided) wins over the scope default
+- `Number.POSITIVE_INFINITY` disables time-bound checks (pure adjacency)
+- `<= 0` disables coalescing for that push
+- `undefined` falls back to the scope/provider `coalesceWindowMs`
 
 ## Coalesce keys, not labels
 

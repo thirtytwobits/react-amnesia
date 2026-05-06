@@ -76,7 +76,7 @@ export function usePersistedUndoableState<T>(
     key: string,
     options: UsePersistedUndoableStateOptions<T>,
 ): UsePersistedUndoableStateResult<T> {
-    const { label, coalesceKey, equals, scopeId, ...mnemonicOptions } = options;
+    const { label, coalesceKey, coalesceWindowMs, equals, scopeId, ...mnemonicOptions } = options;
     // Pin to an explicit scope (default = "default") to keep the persisted
     // value's history bound to a stable surface, just like `useUndoableState`.
     const store = useAmnesiaScope(scopeId ?? DEFAULT_SCOPE_ID);
@@ -85,8 +85,8 @@ export function usePersistedUndoableState<T>(
     const valueRef = useRef(mnemonic.value);
     valueRef.current = mnemonic.value;
 
-    const metaRef = useRef({ label, coalesceKey, equals });
-    metaRef.current = { label, coalesceKey, equals };
+    const metaRef = useRef({ label, coalesceKey, coalesceWindowMs, equals });
+    metaRef.current = { label, coalesceKey, coalesceWindowMs, equals };
 
     const mnemonicSetRef = useRef(mnemonic.set);
     mnemonicSetRef.current = mnemonic.set;
@@ -120,6 +120,7 @@ export function usePersistedUndoableState<T>(
                     },
                     ...(meta.label !== undefined ? { label: meta.label } : {}),
                     ...(meta.coalesceKey !== undefined ? { coalesceKey: meta.coalesceKey } : {}),
+                    ...(meta.coalesceWindowMs !== undefined ? { coalesceWindowMs: meta.coalesceWindowMs } : {}),
                 },
                 { applied: true },
             );
