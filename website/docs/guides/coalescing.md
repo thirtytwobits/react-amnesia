@@ -73,5 +73,5 @@ async commands.
 
 ## See also
 
-- [Recipe: Coalesced Slider Drag](../ai/recipes#2-coalesced-slider-drag)
+- [Recipe: Coalesced Slider Drag](../ai/recipes#3-coalesced-slider-drag)
 - [AI invariants — coalescing rules](../ai/invariants#core-runtime-invariants)

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 10
+sidebar_position: 11
 title: Error Handling
 description: How onError works, the phases, the rollback contract, and how to forward to your tracker.
 ---
@@ -97,6 +97,6 @@ Per-scope wins over provider-level when both are set.
 ## See also
 
 - [AI invariants — Lifecycle Hooks](../ai/invariants#lifecycle-hooks)
-- [Recipe: Custom Error Reporting](../ai/recipes#18-custom-error-reporting)
+- [Recipe: Custom Error Reporting](../ai/recipes#19-custom-error-reporting)
 - [Async Commands guide](./async-commands)
 - [Transactions guide](./transactions)

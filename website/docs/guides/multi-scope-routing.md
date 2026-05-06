@@ -1,5 +1,5 @@
 ---
-sidebar_position: 6
+sidebar_position: 7
 title: Multi-Scope Routing
 description: Multiple authoring surfaces under one provider, each with their own history. Focus claims route Ctrl+Z to the active scope.
 ---
@@ -135,5 +135,5 @@ different document.
 ## See also
 
 - [AI invariants — Multi-Scope Routing](../ai/invariants#multi-scope-routing)
-- [Recipe: Multi-Scope Authoring App](../ai/recipes#12-multi-scope-authoring-app)
+- [Recipe: Multi-Scope Authoring App](../ai/recipes#13-multi-scope-authoring-app)
 - [Anti-pattern: routing useUndoableState through the active scope](../ai/anti-patterns#routing-useundoablestate-through-the-active-scope)

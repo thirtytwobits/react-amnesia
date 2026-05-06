@@ -29,6 +29,7 @@ const sidebars: SidebarsConfig = {
                 "guides/keyboard-shortcuts",
                 "guides/coalescing",
                 "guides/imperative-commands",
+                "guides/forms",
                 "guides/async-commands",
                 "guides/transactions",
                 "guides/multi-scope-routing",

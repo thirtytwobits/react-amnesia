@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 title: Transactions
 description: Collapse N pushes into one composite undoable entry.
 ---
@@ -88,5 +88,5 @@ other — each is appended to the buffer verbatim.
 ## See also
 
 - [AI invariants — Transactions](../ai/invariants#transactions)
-- [Recipe: Transaction (Multi-Step Composite Entry)](../ai/recipes#13-transaction-multi-step-composite-entry)
+- [Recipe: Transaction (Multi-Step Composite Entry)](../ai/recipes#14-transaction-multi-step-composite-entry)
 - [Async Commands guide](./async-commands)

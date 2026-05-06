@@ -1,5 +1,5 @@
 ---
-sidebar_position: 9
+sidebar_position: 10
 title: DevTools
 description: Inspect and drive a live store from external tooling, browser extensions, or AI agents.
 ---
@@ -89,5 +89,5 @@ registry surface returns redacted state.
 ## See also
 
 - [AI invariants — DevTools Registry](../ai/invariants#devtools-registry)
-- [Recipe: Wiring DevTools For Agent / Extension Introspection](../ai/recipes#16-wiring-devtools-for-agent--extension-introspection)
+- [Recipe: Wiring DevTools For Agent / Extension Introspection](../ai/recipes#17-wiring-devtools-for-agent--extension-introspection)
 - [Anti-pattern: Leaving DevTools Enabled In Production](../ai/anti-patterns#leaving-devtools-enabled-in-production)

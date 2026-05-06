@@ -81,6 +81,6 @@ Imperative `push` is right when:
 
 ## See also
 
-- [Recipe: Imperative List Mutation](../ai/recipes#3-imperative-list-mutation)
+- [Recipe: Imperative List Mutation](../ai/recipes#4-imperative-list-mutation)
 - [Transactions guide](./transactions) — for batched compound mutations
 - [Async Commands guide](./async-commands)

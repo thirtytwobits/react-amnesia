@@ -105,6 +105,7 @@
     ],
     "recipes": [
         "reversible-single-value-editor",
+        "multi-field-form-with-shared-undo-stack",
         "coalesced-slider-drag",
         "imperative-list-mutation",
         "persistence-aware-editor",

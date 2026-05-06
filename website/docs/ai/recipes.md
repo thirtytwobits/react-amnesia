@@ -39,7 +39,160 @@ Use when:
 - rapid typing should collapse into a single undo entry
 - the surrounding `<AmnesiaShortcuts />` should drive Ctrl+Z / Cmd+Z
 
-## 2. Coalesced Slider Drag
+## 2. Multi-Field Form With Shared Undo Stack
+
+Multiple `useUndoableState` hooks in the **same scope** share one
+undo/redo stack automatically. A single Ctrl+Z reverts whichever field
+was edited most recently, regardless of which hook produced it. The
+default scope is `"default"`, so just omitting `scopeId` everywhere is
+enough.
+
+```tsx
+import { AmnesiaProvider, AmnesiaShortcuts, useAmnesia, useUndoableState } from "react-amnesia";
+
+function ProfileForm() {
+    const [name, setName, resetName] = useUndoableState("", {
+        label: "Edit name",
+        coalesceKey: "form:profile:name",
+    });
+    const [email, setEmail, resetEmail] = useUndoableState("", {
+        label: "Edit email",
+        coalesceKey: "form:profile:email",
+    });
+    const [bio, setBio, resetBio] = useUndoableState("", {
+        label: "Edit bio",
+        coalesceKey: "form:profile:bio",
+    });
+
+    // All three setters above push entries onto the same default-scope stack.
+    // Ctrl+Z reverts the most recent edit, regardless of which field it was.
+    const { transaction, clear } = useAmnesia();
+
+    const reset = () => {
+        // Reset each field. We use a transaction so the whole form-clear
+        // collapses into ONE undoable composite entry — Ctrl+Z restores
+        // every field at once.
+        void transaction("Reset profile form", async (tx) => {
+            const previous = { name, email, bio };
+            await tx.push({
+                redo: () => {
+                    resetName();
+                    resetEmail();
+                    resetBio();
+                },
+                undo: () => {
+                    setName(previous.name);
+                    setEmail(previous.email);
+                    setBio(previous.bio);
+                },
+            });
+        });
+    };
+
+    const submit = async () => {
+        await api.saveProfile({ name, email, bio });
+        // After a successful submit, history of pre-submit edits is no longer
+        // meaningful — the server has accepted them.
+        clear();
+    };
+
+    return (
+        <form
+            onSubmit={(e) => {
+                e.preventDefault();
+                void submit();
+            }}
+        >
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" />
+            <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Bio" />
+            <button type="submit">Save</button>
+            <button type="button" onClick={reset}>
+                Reset
+            </button>
+        </form>
+    );
+}
+
+export default function App() {
+    return (
+        <AmnesiaProvider>
+            <AmnesiaShortcuts />
+            <ProfileForm />
+        </AmnesiaProvider>
+    );
+}
+```
+
+Use when:
+
+- a form has several fields and the user expects one Ctrl+Z to reverse
+  the last typing burst, no matter which field they were in
+- "Reset" should be an atomic undoable action (one Ctrl+Z restores
+  everything at once)
+- "Submit" should retire the pre-submit history (no point letting the
+  user undo edits that have already been persisted)
+
+### Form-state hygiene
+
+What goes in `useUndoableState` vs plain `useState`:
+
+| State                                     | Hook                          | Why                                                    |
+| ----------------------------------------- | ----------------------------- | ------------------------------------------------------ |
+| User-authored field values                | `useUndoableState`            | The thing the user types is what they want to undo.    |
+| Validation errors / "is this field valid" | `useState`                    | Derived. Recomputed from values on every render.       |
+| "Submit in flight" / loading              | `useState`                    | Ephemeral; meaningless after the request settles.      |
+| `currentStep` in a wizard                 | `useState`                    | Navigation isn't an edit; Ctrl+Z shouldn't move pages. |
+| Server response cache                     | `useState` or your data layer | Not user input; not undoable.                          |
+
+If you find yourself reaching for "but should we undo the validation
+state too?" — no. Validation is a function of the value. Undo the value;
+validation re-derives.
+
+### Per-field `coalesceKey` is essential
+
+Without it, every keystroke is its own entry — typing "hello" produces
+five undo entries. With per-field `coalesceKey`, all five collapse into
+one entry per **logical edit burst**.
+
+The keys must be **distinct per field**. Don't share `coalesceKey: "form"`
+across name + email — typing in name then immediately in email would
+weirdly merge. Namespace them: `"form:profile:name"`, `"form:profile:email"`.
+
+When the user pauses for longer than `coalesceWindowMs` (default 400ms),
+the next keystroke creates a fresh entry. That's usually the right
+checkpoint cadence for typing.
+
+### When to use a separate scope
+
+If the form is one part of a larger app that has its own undo (e.g. a
+canvas in the same page), put the form in its own scope so Ctrl+Z while
+the form is focused doesn't accidentally revert canvas state — and vice
+versa:
+
+```tsx
+function ProfileForm() {
+    const claim = useAmnesiaFocusClaim("form");
+    const [name, setName] = useUndoableState("", {
+        scopeId: "form",
+        coalesceKey: "form:profile:name",
+    });
+    // ... other fields all with scopeId: "form"
+
+    return (
+        <section tabIndex={-1} {...claim}>
+            {/* ...inputs... */}
+        </section>
+    );
+}
+```
+
+The pattern: every `useUndoableState` in the form pins to `scopeId: "form"`,
+and a `useAmnesiaFocusClaim("form")` on the form's outer container makes
+Ctrl+Z route there while the user is typing. Other surfaces in the app
+get their own scopes.
+
+## 3. Coalesced Slider Drag
 
 ```tsx
 import { useUndoableState } from "react-amnesia";
@@ -66,7 +219,7 @@ A slider can fire dozens of changes per second. The shared `coalesceKey`
 collapses the whole drag into one history entry so a single Ctrl+Z restores
 the pre-drag value.
 
-## 3. Imperative List Mutation
+## 4. Imperative List Mutation
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -103,7 +256,7 @@ Use when:
 - the inverse depends on data captured at the call site (here: the new item id)
 - the calling code already mutated the underlying state, so `redo()` should not run on insertion
 
-## 4. Persistence-Aware Editor
+## 5. Persistence-Aware Editor
 
 ```tsx
 import { MnemonicProvider } from "react-mnemonic";
@@ -142,7 +295,7 @@ Use when:
 - changes should still be reversible while the user is on the page
 - it is acceptable for the undo history to start empty after each reload
 
-## 5. Document Switch With `clear()`
+## 6. Document Switch With `clear()`
 
 ```tsx
 import { useEffect } from "react";
@@ -161,7 +314,7 @@ Use when the application switches between documents or workspaces. The closures
 captured by previous entries probably reference the prior document's state;
 `clear()` drops both stacks without invoking them.
 
-## 6. Modal Owns Its Own Keybindings
+## 7. Modal Owns Its Own Keybindings
 
 ```tsx
 import { useState } from "react";
@@ -184,7 +337,7 @@ Use when a modal has its own undo semantics (e.g. a color picker with its own
 preview history) and the global shortcuts must yield while it is open.
 Toggling `enabled` is preferable to unmounting the component.
 
-## 7. Surface-Scoped Shortcut Binding
+## 8. Surface-Scoped Shortcut Binding
 
 ```tsx
 import { useRef, type RefObject } from "react";
@@ -205,7 +358,7 @@ Use when only a specific surface should respond to undo / redo chords. Setting
 `skipEditableTargets` to `false` is appropriate here because the canvas
 region is not a native editable target.
 
-## 8. Web-Component / Shadow-DOM Editable
+## 9. Web-Component / Shadow-DOM Editable
 
 ```tsx
 import { AmnesiaShortcuts } from "react-amnesia";
@@ -235,7 +388,7 @@ is correctly skipped under the default `skipEditableTargets={true}`.
 Closed shadow roots (`mode: "closed"`) are intentionally opaque — the
 host author has chosen to hide them, and `composedPath` reflects that.
 
-## 9. Reversible Multi-Key Persisted Action (Pre-Transactions Pattern)
+## 10. Reversible Multi-Key Persisted Action (Pre-Transactions Pattern)
 
 ```tsx
 import { useMnemonicKey } from "react-mnemonic";
@@ -279,7 +432,7 @@ Use when one user action mutates several persisted keys and the inverse must
 restore them as a unit. `usePersistedUndoableState` covers single keys; this
 pattern handles compound, atomic actions.
 
-## 10. Async Command (Server-Backed Setting)
+## 11. Async Command (Server-Backed Setting)
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -327,7 +480,7 @@ Use when:
 The handler returning a Promise causes the store to flip `pending: true` for
 the duration of the await. Subscribers see the busy state synchronously.
 
-## 11. Divergent First-Apply With `Command.do`
+## 12. Divergent First-Apply With `Command.do`
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -379,7 +532,7 @@ Use when:
 
 `do` runs once at push time. Subsequent redos always invoke `command.redo`.
 
-## 12. Multi-Scope Authoring App
+## 13. Multi-Scope Authoring App
 
 ```tsx
 import {
@@ -446,7 +599,7 @@ surface owns its own history; clicking into one shifts the active claim.
 Both `useUndoableState` calls pin to their scope so React state never moves
 between scopes when the user's focus shifts.
 
-## 13. Transaction (Multi-Step Composite Entry)
+## 14. Transaction (Multi-Step Composite Entry)
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -499,7 +652,7 @@ If the `work` function throws or rejects, every buffered undo runs in
 reverse before the rejection propagates. `clear()` or `dispose()` during the
 await stales the transaction the same way.
 
-## 14. Telemetry With Lifecycle Hooks + `metaTransform`
+## 15. Telemetry With Lifecycle Hooks + `metaTransform`
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -545,7 +698,7 @@ public snapshot. Telemetry handlers and history-list UI both see the
 sanitized form. A throwing transform safely strips `meta` rather than
 leaking unsanitized values.
 
-## 15. Discard-Changes With `reset`
+## 16. Discard-Changes With `reset`
 
 ```tsx
 import { useUndoableState } from "react-amnesia";
@@ -583,7 +736,7 @@ in the same microtask. There is no entry to undo back to the pre-reset
 state — that is the point. If you want the discard to itself be undoable,
 push a normal command instead.
 
-## 16. Wiring DevTools For Agent / Extension Introspection
+## 17. Wiring DevTools For Agent / Extension Introspection
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -625,7 +778,7 @@ The registry is **opt-in**: when no provider sets `enableDevTools`, no
 global is created. When enabled, provider entries are held weakly so the
 registry never prevents an unmounted provider from being garbage-collected.
 
-## 17. Cancellable Async Command With AbortSignal
+## 18. Cancellable Async Command With AbortSignal
 
 ```tsx
 import { useAmnesia } from "react-amnesia";
@@ -678,7 +831,7 @@ error after `signal.aborted === true` produces a silent no-op: no
 still drops the commit via the epoch check, but `onError({ phase: "stale" })`
 fires.
 
-## 18. Custom Error Reporting
+## 19. Custom Error Reporting
 
 ```tsx
 import { AmnesiaProvider, AmnesiaShortcuts } from "react-amnesia";
@@ -702,7 +855,7 @@ export function App({ children }: { children: React.ReactNode }) {
 Use when failing inverses should reach an error tracker. Remember that throwing
 from the handler is caught and ignored — the handler must complete successfully.
 
-## 19. History Breadcrumb UI
+## 20. History Breadcrumb UI
 
 ```tsx
 import { useAmnesia } from "react-amnesia";

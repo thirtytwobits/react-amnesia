@@ -68,6 +68,7 @@ application history with `react-amnesia`.
 ## Canonical Recipes
 
 - Reversible Single-Value Editor
+- Multi-Field Form With Shared Undo Stack
 - Coalesced Slider Drag
 - Imperative List Mutation
 - Persistence-Aware Editor

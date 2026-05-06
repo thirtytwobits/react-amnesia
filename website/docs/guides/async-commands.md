@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 title: Async Commands
 description: Server-backed actions, the pending state, single-flight semantics, and AbortSignal cancellation.
 ---
@@ -112,5 +112,5 @@ to v0.1 of the API. The choice is per-command, not per-store.
 
 - [AI invariants — Async Commands](../ai/invariants#core-runtime-invariants)
 - [AI invariants — Cancellation (AbortSignal)](../ai/invariants#cancellation-abortsignal)
-- [Recipe: Async Command](../ai/recipes#10-async-command-server-backed-setting)
-- [Recipe: Cancellable Async Command With AbortSignal](../ai/recipes#17-cancellable-async-command-with-abortsignal)
+- [Recipe: Async Command](../ai/recipes#11-async-command-server-backed-setting)
+- [Recipe: Cancellable Async Command With AbortSignal](../ai/recipes#18-cancellable-async-command-with-abortsignal)

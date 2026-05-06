@@ -1,5 +1,5 @@
 ---
-sidebar_position: 7
+sidebar_position: 8
 title: Document Switch Resets
 description: Wipe history on document changes, route changes, logout — anywhere stale closures could replay against new state.
 ---
@@ -77,6 +77,6 @@ mid-fetch automatically cancels the network call.
 
 ## See also
 
-- [Recipe: Document Switch With `clear()`](../ai/recipes#5-document-switch-with-clear)
+- [Recipe: Document Switch With `clear()`](../ai/recipes#6-document-switch-with-clear)
 - [Anti-pattern: Replaying Stale Closures Across Document Switches](../ai/anti-patterns#replaying-stale-closures-across-document-switches)
 - [Multi-Scope Routing guide](./multi-scope-routing)

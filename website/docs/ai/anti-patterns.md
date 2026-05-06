@@ -169,6 +169,89 @@ Prefer:
 - references (e.g. user id) and resolving sensitive data at runtime
 - structured labels that summarize the action without leaking material
 
+## Sharing `coalesceKey` Across Form Fields
+
+Multiple `useUndoableState` hooks in the same scope already share one
+undo stack. They do **not** need to share `coalesceKey` — that controls
+how consecutive pushes merge, not how the stack is shared.
+
+Wrong:
+
+```tsx
+const [name, setName] = useUndoableState("", { coalesceKey: "form" });
+const [email, setEmail] = useUndoableState("", { coalesceKey: "form" });
+```
+
+A keystroke burst on `name` followed quickly by a burst on `email`
+would coalesce into one entry across both fields. Ctrl+Z would
+half-revert one and leave the other partially mutated.
+
+Prefer:
+
+```tsx
+const [name, setName] = useUndoableState("", { coalesceKey: "form:contact:name" });
+const [email, setEmail] = useUndoableState("", { coalesceKey: "form:contact:email" });
+```
+
+Distinct `coalesceKey` per field. The shared stack is automatic via the
+shared scope.
+
+## Putting Validation State In `useUndoableState`
+
+Validation errors, "is this field valid", "has this been touched",
+"submit in flight" — none of these should be in `useUndoableState`.
+They're derived from values or ephemeral session state.
+
+Wrong:
+
+```tsx
+const [email, setEmail] = useUndoableState("");
+const [emailError, setEmailError] = useUndoableState<string | null>(null);
+```
+
+Now Ctrl+Z can revert the validation error independently of the value
+that produced it. Confusing UX, and the validation error is recomputable
+from the value anyway.
+
+Prefer:
+
+```tsx
+const [email, setEmail] = useUndoableState("", { coalesceKey: "form:email" });
+const emailError = validateEmail(email); // ← plain derivation on render
+```
+
+Same principle for "submit in flight" (`useState` — it's session state)
+and "current step" in a wizard (`useState` — Ctrl+Z shouldn't navigate).
+
+## Forgetting To `clear()` After Submit
+
+If the form's pre-submit history stays on the stack after the user has
+clicked Save and the server has accepted the values, Ctrl+Z lets them
+"undo" their way back into a draft state that no longer matches the
+server.
+
+Wrong:
+
+```tsx
+const submit = async () => {
+    await api.save({ name, email });
+    // history still contains every keystroke up to submit
+};
+```
+
+Prefer:
+
+```tsx
+const { clear } = useAmnesia();
+const submit = async () => {
+    await api.save({ name, email });
+    clear();
+};
+```
+
+Or remount the provider with a `key` if you want a fully fresh form
+instance for the next entry.
+
 ## Treating `useUndoableState`'s `reset` As Scope-Local
 
 `reset` clears the **entire scope** the hook is bound to — not just the

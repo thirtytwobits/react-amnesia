@@ -1,5 +1,5 @@
 ---
-sidebar_position: 8
+sidebar_position: 9
 title: Optional Persistence
 description: Combine react-amnesia with react-mnemonic for undoable state that survives reloads.
 ---
@@ -84,5 +84,5 @@ entry in the bound scope, not just this hook's value.
 
 ## See also
 
-- [Recipe: Persistence-Aware Editor](../ai/recipes#4-persistence-aware-editor)
+- [Recipe: Persistence-Aware Editor](../ai/recipes#5-persistence-aware-editor)
 - [react-mnemonic docs](https://thirtytwobits.github.io/react-mnemonic/)

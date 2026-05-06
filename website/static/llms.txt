@@ -20,6 +20,7 @@ lives under `/docs/ai`, with `/llms-full.txt` as the long-form export and
 - [Keyboard Shortcuts](https://thirtytwobits.github.io/react-amnesia/docs/guides/keyboard-shortcuts)
 - [Coalescing Bursts](https://thirtytwobits.github.io/react-amnesia/docs/guides/coalescing)
 - [Imperative Commands](https://thirtytwobits.github.io/react-amnesia/docs/guides/imperative-commands)
+- [Forms](https://thirtytwobits.github.io/react-amnesia/docs/guides/forms)
 - [Async Commands](https://thirtytwobits.github.io/react-amnesia/docs/guides/async-commands)
 - [Transactions](https://thirtytwobits.github.io/react-amnesia/docs/guides/transactions)
 - [Multi-Scope Routing](https://thirtytwobits.github.io/react-amnesia/docs/guides/multi-scope-routing)

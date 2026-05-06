@@ -19,6 +19,18 @@ would change user behavior after a Ctrl+Z.
 | Undoable component library distributed independently                          | Default scope is fine; consumer apps wrap in their own provider               |
 | Modal / overlay that should temporarily steal Ctrl+Z                          | Mount its content with `useAmnesiaFocusClaim("modal")`; release on close      |
 
+## Form With Multiple Fields
+
+| Need                                                       | Approach                                                                                                           |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Several fields share one undo stack (default expectation)  | Multiple `useUndoableState` calls in the same scope. They share automatically — no `scopeId` coordination needed.  |
+| Avoid one entry per keystroke                              | Per-field `coalesceKey: "form:<formname>:<fieldname>"` — distinct per field                                        |
+| "Reset" button that itself is undoable                     | Wrap each field's reset in a `transaction`; the bundle becomes one composite                                       |
+| "Discard changes" that is NOT undoable                     | Call `useUndoableState`'s third tuple slot (the `reset` from the hook) — it wipes scope history                    |
+| "Submit" should retire the pre-submit history              | `useAmnesia().clear()` after a successful submit                                                                   |
+| Form embedded in an app with other undoable surfaces       | Pin every field to a named scope (`scopeId: "form:contact"`) and use `useAmnesiaFocusClaim` on the outer container |
+| Validation errors / submit-in-flight / current wizard step | `useState`, NOT `useUndoableState` — they're derived or ephemeral                                                  |
+
 ## Pin to a Scope vs Track the Active Scope
 
 | Need                                                                          | Hook                                                               |

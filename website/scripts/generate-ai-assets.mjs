@@ -70,6 +70,7 @@ const keyGuideLinks = [
     { title: "Keyboard Shortcuts", url: `${siteBaseUrl}/docs/guides/keyboard-shortcuts` },
     { title: "Coalescing Bursts", url: `${siteBaseUrl}/docs/guides/coalescing` },
     { title: "Imperative Commands", url: `${siteBaseUrl}/docs/guides/imperative-commands` },
+    { title: "Forms", url: `${siteBaseUrl}/docs/guides/forms` },
     { title: "Async Commands", url: `${siteBaseUrl}/docs/guides/async-commands` },
     { title: "Transactions", url: `${siteBaseUrl}/docs/guides/transactions` },
     { title: "Multi-Scope Routing", url: `${siteBaseUrl}/docs/guides/multi-scope-routing` },
@@ -182,6 +183,7 @@ const aiContract = {
     quickRules,
     recipes: [
         "reversible-single-value-editor",
+        "multi-field-form-with-shared-undo-stack",
         "coalesced-slider-drag",
         "imperative-list-mutation",
         "persistence-aware-editor",

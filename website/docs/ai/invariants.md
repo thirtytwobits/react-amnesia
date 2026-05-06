@@ -110,6 +110,7 @@ guarantees.
 
 - A provider owns a `Map<scopeId, Amnesia>`. Named scopes are created lazily on first reference. The reserved `"default"` scope is created on first reference like any other.
 - Scopes are isolated: each has its own past, future, version, epoch, pending set, capacity, and coalesce window. Cross-scope undo / redo is not possible.
+- **All hooks bound to the same scopeId share that scope's stack.** Multiple `useUndoableState`, `usePersistedUndoableState`, and imperative `useAmnesia(scopeId).push(...)` calls in the same scope all push entries onto one ordered history. A single Ctrl+Z pops the most recent entry regardless of which hook produced it. This is the default behavior — no explicit coordination needed: omit `scopeId` everywhere and they all share `"default"`.
 - The provider tracks at most one **focused-child claim** at a time. `claim(scopeId)` sets it; `claim("default")` clears it; `release(scopeId)` clears it only if `scopeId` currently holds it.
 - The active scope is `claim ?? "default"`. `getActiveScopeId()` reads it; `subscribeActive(listener)` notifies on every change.
 - Per-scope option overrides on the provider's `scopes` prop are read at scope-creation time and frozen thereafter. Updating the prop after a scope exists has no effect.
