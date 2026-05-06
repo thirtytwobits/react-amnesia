@@ -40,7 +40,7 @@ When adding undoable behavior to this repository or to example apps built with
 - Each operation gets its own `AbortController` — sibling ops don't share signals. Nested transactions DO share the outer transaction's signal, so cancellation propagates through the whole flattened buffer.
 - A new `push` clears the redo (future) stack. There is no branching in v0.
 - Use `coalesceKey` (e.g. `"edit:title"`) for keystroke or drag bursts so a single Ctrl+Z reverts the whole burst. Coalescing across async commands is fragile — recommend against it.
-- Two pushes coalesce only when they share the same non-empty `coalesceKey` and arrive within `coalesceWindowMs` of each other.
+- Two pushes coalesce only when they share the same non-empty `coalesceKey` and pass the effective coalescing window for that push (`command.coalesceWindowMs` override or scope default).
 - Capacity defaults to `100`. When the limit is reached, the oldest past entry is dropped silently — do not rely on history for audit trails.
 - `clear()` is synchronous. It drops both stacks, bumps the `epoch` counter, empties the pending set, and notifies subscribers once.
 - `<AmnesiaShortcuts />` defaults to `skipEditableTargets: true` so the browser's native undo handles `<input>`, `<textarea>`, `<select>`, and `contenteditable` regions. The check walks `event.composedPath()` so editables inside open shadow roots (Lit / web components) are also recognized.

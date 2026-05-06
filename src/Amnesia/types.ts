@@ -96,10 +96,23 @@ export interface Command {
      * Typical use: rapid keystrokes in a text input share a `coalesceKey` like
      * `"edit:title"` so a single Ctrl+Z undoes the burst rather than each key.
      *
-     * Coalescing also requires that the new push arrives within
-     * `coalesceWindowMs` of the previous one (provider-level setting).
+     * Coalescing also requires passing the effective coalescing window for
+     * this push:
+     * - `command.coalesceWindowMs` when defined, otherwise scope/provider
+     *   `coalesceWindowMs`
+     * - `Number.POSITIVE_INFINITY` disables time-bound checks
+     * - `<= 0` disables coalescing for this push
      */
     coalesceKey?: string;
+
+    /**
+     * Optional per-command override for coalescing window resolution.
+     *
+     * - `undefined` uses the scope/provider `coalesceWindowMs`.
+     * - `Number.POSITIVE_INFINITY` disables the time bound (pure adjacency).
+     * - `<= 0` disables coalescing for this push.
+     */
+    coalesceWindowMs?: number;
 
     /**
      * Free-form metadata for tooling. Not interpreted by Amnesia.
@@ -538,6 +551,12 @@ export interface UseUndoableStateOptions<T> {
      * group bursts (typing, dragging) into one entry.
      */
     coalesceKey?: string;
+
+    /**
+     * Optional per-command coalescing window override applied by the setter.
+     * See `Command.coalesceWindowMs` for semantics.
+     */
+    coalesceWindowMs?: number;
 
     /**
      * Equality predicate used to suppress no-op writes. Defaults to `Object.is`.

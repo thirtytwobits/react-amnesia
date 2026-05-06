@@ -156,6 +156,156 @@ describe("createAmnesiaStore — synchronous behavior", () => {
         expect(store.getSnapshot().past).toHaveLength(2);
     });
 
+    it("uses a per-command coalesceWindowMs override instead of the scope default", async () => {
+        const store = createAmnesiaStore({ coalesceWindowMs: 1000 });
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await store.push(
+                { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
+            fakeNow += 20;
+            await store.push(
+                {
+                    coalesceKey: "edit:title",
+                    coalesceWindowMs: 10,
+                    redo: () => undefined,
+                    undo: () => undefined,
+                },
+                { applied: true },
+            );
+        } finally {
+            Date.now = before;
+        }
+
+        expect(store.getSnapshot().past).toHaveLength(2);
+    });
+
+    it("allows a per-command override to widen coalescing beyond the scope default", async () => {
+        const store = createAmnesiaStore({ coalesceWindowMs: 10 });
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await store.push(
+                { coalesceKey: "drag:node-42", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
+            fakeNow += 100;
+            await store.push(
+                {
+                    coalesceKey: "drag:node-42",
+                    coalesceWindowMs: 1000,
+                    redo: () => undefined,
+                    undo: () => undefined,
+                },
+                { applied: true },
+            );
+        } finally {
+            Date.now = before;
+        }
+
+        expect(store.getSnapshot().past).toHaveLength(1);
+    });
+
+    it("treats Number.POSITIVE_INFINITY as unbounded coalescing", async () => {
+        const store = createAmnesiaStore({ coalesceWindowMs: 1 });
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await store.push(
+                { coalesceKey: "drag:node-42", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
+            fakeNow += 60_000;
+            await store.push(
+                {
+                    coalesceKey: "drag:node-42",
+                    coalesceWindowMs: Number.POSITIVE_INFINITY,
+                    redo: () => undefined,
+                    undo: () => undefined,
+                },
+                { applied: true },
+            );
+        } finally {
+            Date.now = before;
+        }
+
+        expect(store.getSnapshot().past).toHaveLength(1);
+    });
+
+    it("disables coalescing for a push when the command window is zero or negative", async () => {
+        const store = createAmnesiaStore({ coalesceWindowMs: 1000 });
+        await store.push(
+            { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+            { applied: true },
+        );
+        await store.push(
+            {
+                coalesceKey: "edit:title",
+                coalesceWindowMs: 0,
+                redo: () => undefined,
+                undo: () => undefined,
+            },
+            { applied: true },
+        );
+        await store.push(
+            {
+                coalesceKey: "edit:title",
+                coalesceWindowMs: -1,
+                redo: () => undefined,
+                undo: () => undefined,
+            },
+            { applied: true },
+        );
+
+        expect(store.getSnapshot().past).toHaveLength(3);
+    });
+
+    it("does not coalesce when the command window is non-finite (except +Infinity)", async () => {
+        const store = createAmnesiaStore({ coalesceWindowMs: 1000 });
+        await store.push(
+            { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+            { applied: true },
+        );
+        await store.push(
+            {
+                coalesceKey: "edit:title",
+                coalesceWindowMs: Number.NaN,
+                redo: () => undefined,
+                undo: () => undefined,
+            },
+            { applied: true },
+        );
+
+        expect(store.getSnapshot().past).toHaveLength(2);
+    });
+
+    it("falls back to scope coalesceWindowMs when the command override is omitted", async () => {
+        const store = createAmnesiaStore({ coalesceWindowMs: 10 });
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await store.push(
+                { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
+            fakeNow += 20;
+            await store.push(
+                { coalesceKey: "edit:title", redo: () => undefined, undo: () => undefined },
+                { applied: true },
+            );
+        } finally {
+            Date.now = before;
+        }
+
+        expect(store.getSnapshot().past).toHaveLength(2);
+    });
+
     it("notifies subscribers exactly once per synchronous mutation", async () => {
         const store = createAmnesiaStore();
         const listener = vi.fn();

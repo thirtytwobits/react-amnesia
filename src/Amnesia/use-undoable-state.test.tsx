@@ -213,3 +213,44 @@ describe("useUndoableState — reset (Workstream F)", () => {
         expect(Number(screen.getByTestId("value").textContent)).toBe(captured);
     });
 });
+
+describe("useUndoableState — coalesceWindowMs pass-through", () => {
+    it("passes coalesceWindowMs through to each pushed command", async () => {
+        function App() {
+            const [value, setValue] = useUndoableState("", {
+                coalesceKey: "edit:title",
+                coalesceWindowMs: Number.POSITIVE_INFINITY,
+            });
+            const { past } = useAmnesia();
+            return (
+                <div>
+                    <output data-testid="value">{value}</output>
+                    <output data-testid="depth">{past.length}</output>
+                    <button onClick={() => setValue("a")}>set-a</button>
+                    <button onClick={() => setValue("ab")}>set-ab</button>
+                </div>
+            );
+        }
+
+        const user = userEvent.setup();
+        render(
+            <AmnesiaProvider coalesceWindowMs={1}>
+                <App />
+            </AmnesiaProvider>,
+        );
+
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await user.click(screen.getByText("set-a"));
+            fakeNow += 100;
+            await user.click(screen.getByText("set-ab"));
+        } finally {
+            Date.now = before;
+        }
+
+        expect(screen.getByTestId("value").textContent).toBe("ab");
+        expect(screen.getByTestId("depth").textContent).toBe("1");
+    });
+});

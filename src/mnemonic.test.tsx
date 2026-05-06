@@ -181,4 +181,46 @@ describe("usePersistedUndoableState", () => {
         expect(screen.getByTestId("count").textContent).toBe("0");
         expect(screen.getByTestId("canUndo").textContent).toBe("n");
     });
+
+    it("passes coalesceWindowMs through to persisted command pushes", async () => {
+        function CoalesceApp() {
+            const { value, set } = usePersistedUndoableState<string>("title", {
+                defaultValue: "",
+                coalesceKey: "edit:title",
+                coalesceWindowMs: Number.POSITIVE_INFINITY,
+            });
+            const { past } = useAmnesia();
+            return (
+                <div>
+                    <output data-testid="title">{value}</output>
+                    <output data-testid="depth">{past.length}</output>
+                    <button onClick={() => set("a")}>set-a</button>
+                    <button onClick={() => set("ab")}>set-ab</button>
+                </div>
+            );
+        }
+
+        const user = userEvent.setup();
+        render(
+            <MnemonicProvider namespace="test">
+                <AmnesiaProvider coalesceWindowMs={1}>
+                    <CoalesceApp />
+                </AmnesiaProvider>
+            </MnemonicProvider>,
+        );
+
+        const before = Date.now;
+        let fakeNow = before();
+        Date.now = () => fakeNow;
+        try {
+            await user.click(screen.getByText("set-a"));
+            fakeNow += 100;
+            await user.click(screen.getByText("set-ab"));
+        } finally {
+            Date.now = before;
+        }
+
+        expect(screen.getByTestId("title").textContent).toBe("ab");
+        expect(screen.getByTestId("depth").textContent).toBe("1");
+    });
 });
