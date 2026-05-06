@@ -1876,7 +1876,7 @@ that define the contract underneath them.
 ## Sister Library
 
 `react-amnesia` is the sister project of
-[`react-mnemonic`](https://github.com/thirtytwobits/react-mnemonic), which
+[`react-mnemonic`](https://thirtytwobits.github.io/react-mnemonic/), which
 handles persistent state. The optional `react-amnesia/mnemonic` bridge is the
 only place the two projects depend on each other directly. When a task spans
 both libraries, mount both repositories' AI docs side-by-side: each library

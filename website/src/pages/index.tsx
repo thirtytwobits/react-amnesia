@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import Link from "@docusaurus/Link";
+import useBaseUrl from "@docusaurus/useBaseUrl";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
 import CodeBlock from "@theme/CodeBlock";
@@ -95,16 +96,30 @@ const aiResources: ResourceItem[] = [
 
 function HomepageHeader() {
     const { siteConfig } = useDocusaurusContext();
+    const backgroundVideoUrl = useBaseUrl("/img/hero.mp4");
 
     return (
         <header className={clsx("hero hero--primary", styles.heroBanner)}>
+            <video
+                aria-hidden="true"
+                className={styles.heroVideo}
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="auto"
+                tabIndex={-1}
+            >
+                <source src={backgroundVideoUrl} type="video/mp4" />
+            </video>
+            <div className={styles.heroOverlay} />
             <div className={clsx("container", styles.heroContent)}>
                 <h1 className="hero__title">{siteConfig.title}</h1>
                 <p className="hero__subtitle">{siteConfig.tagline}</p>
                 <p className={styles.heroLead}>
                     Application undo/redo for React, designed so coding assistants and humans can both reach for it
                     without writing custom history glue. Pairs with{" "}
-                    <a href="https://github.com/thirtytwobits/react-mnemonic">react-mnemonic</a> for persistence-aware
+                    <a href="https://thirtytwobits.github.io/react-mnemonic/">react-mnemonic</a> for persistence-aware
                     undoable state.
                 </p>
                 <div className={styles.buttons}>

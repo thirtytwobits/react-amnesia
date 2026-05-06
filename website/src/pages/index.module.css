@@ -5,8 +5,34 @@
     overflow: hidden;
 }
 
+/* Background video fills the hero. `aria-hidden` and `tabIndex={-1}` on the
+ * element keep it out of the accessibility tree so screen readers and
+ * keyboard navigation skip it entirely. */
+.heroVideo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* Translucent purple overlay tints the video and keeps the white hero text
+ * legible regardless of the underlying frame. Tune the alpha values to
+ * taste — higher alpha = video more muted, lower = video more visible. */
+.heroOverlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(108, 76, 216, 0.55) 0%, rgba(108, 76, 216, 0.85) 100%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Sits above both video and overlay. */
 .heroContent {
     position: relative;
+    z-index: 2;
 }
 
 .heroLead {

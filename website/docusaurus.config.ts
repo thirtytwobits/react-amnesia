@@ -127,7 +127,7 @@ const config: Config = {
                     items: [
                         { label: "GitHub", href: "https://github.com/thirtytwobits/react-amnesia" },
                         { label: "npm", href: "https://www.npmjs.com/package/react-amnesia" },
-                        { label: "react-mnemonic", href: "https://github.com/thirtytwobits/react-mnemonic" },
+                        { label: "react-mnemonic", href: "https://thirtytwobits.github.io/react-mnemonic/" },
                     ],
                 },
             ],

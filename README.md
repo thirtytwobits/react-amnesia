@@ -2,12 +2,15 @@
 
 AI-friendly application undo/redo (Ctrl+Z) for React.
 
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.md)
+[![npm version](https://img.shields.io/npm/v/react-amnesia.svg)](https://www.npmjs.com/package/react-amnesia)
+[![CI](https://github.com/thirtytwobits/react-amnesia/actions/workflows/ci.yml/badge.svg)](https://github.com/thirtytwobits/react-amnesia/actions/workflows/ci.yml)
+[![docs](https://img.shields.io/badge/docs-online-6c4cd8.svg)](https://thirtytwobits.github.io/react-amnesia/)
+[![license](https://img.shields.io/npm/l/react-amnesia.svg)](https://github.com/thirtytwobits/react-amnesia/blob/main/LICENSE.md)
 
 `react-amnesia` is a small, in-memory command-history store for React
 applications. It manages an undo / redo stack and ships a `useState`-shaped
 hook so any piece of state in your UI can become reversible. Like its sister
-project [`react-mnemonic`](https://github.com/thirtytwobits/react-mnemonic), it
+project [`react-mnemonic`](https://thirtytwobits.github.io/react-mnemonic/), it
 is designed to be **AI-first**: visible structure, unambiguous specifications,
 and small, composable primitives that an agent can reason about without
 guessing.
