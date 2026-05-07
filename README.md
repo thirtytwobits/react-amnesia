@@ -7,6 +7,8 @@ AI-friendly application undo/redo (Ctrl+Z) for React.
 [![docs](https://img.shields.io/badge/docs-online-6c4cd8.svg)](https://thirtytwobits.github.io/react-amnesia/)
 [![license](https://img.shields.io/npm/l/react-amnesia.svg)](https://github.com/thirtytwobits/react-amnesia/blob/main/LICENSE.md)
 
+![react-amnesia logo](./aMNEsia.png)
+
 `react-amnesia` is a small, in-memory command-history store for React
 applications. It manages an undo / redo stack and ships a `useState`-shaped
 hook so any piece of state in your UI can become reversible. Like its sister
@@ -172,6 +174,7 @@ each session.
 - [Transactions](https://thirtytwobits.github.io/react-amnesia/docs/guides/transactions)
 - [Multi-Scope Routing](https://thirtytwobits.github.io/react-amnesia/docs/guides/multi-scope-routing)
 - [DevTools](https://thirtytwobits.github.io/react-amnesia/docs/guides/devtools)
+- [OS Menu Integration (Tauri/Electron)](https://thirtytwobits.github.io/react-amnesia/docs/guides/os-menu-integration)
 - [Error Handling](https://thirtytwobits.github.io/react-amnesia/docs/guides/error-handling)
 - [API Reference](https://thirtytwobits.github.io/react-amnesia/docs/api)
 

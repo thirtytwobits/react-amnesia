@@ -36,6 +36,7 @@ const sidebars: SidebarsConfig = {
                 "guides/document-switch-resets",
                 "guides/optional-persistence",
                 "guides/devtools",
+                "guides/os-menu-integration",
                 "guides/error-handling",
             ],
         },

@@ -61,6 +61,10 @@ function handleUndoMenuClick() {
 }
 ```
 
+For a full end-to-end desktop-shell setup (native menu creation, enabled
+state syncing, DevTools registry wiring), see
+[OS Menu Integration (Tauri/Electron)](./os-menu-integration).
+
 ## Disabling globally
 
 For a modal that owns its own undo:
