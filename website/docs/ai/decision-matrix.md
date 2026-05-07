@@ -44,12 +44,13 @@ would change user behavior after a Ctrl+Z.
 
 ## `useUndoableState` vs `push` vs `useAmnesia`
 
-| Need                                                          | API                                 | Why                                                                   |
-| ------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
-| Single reversible value, replaces a `useState`                | `useUndoableState(initial, opts)`   | Smallest call site; the hook owns redo and undo closures              |
-| Mutating something the hook can't own (lists, graphs, canvas) | `useAmnesia().push({ redo, undo })` | Full control over the inverse; pass `{ applied: true }` after mutate  |
-| Reading the stack for UI (history list, breadcrumb, badges)   | `useAmnesia()` snapshot             | Already memo-stable; no need to subscribe manually                    |
-| Direct programmatic undo / redo (toolbar buttons, menu items) | `useAmnesia().undo()` / `.redo()`   | Resolves to the affected entry id, or `null` when the stack was empty |
+| Need                                                          | API                                 | Why                                                                         |
+| ------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------- |
+| Single reversible value, replaces a `useState`                | `useUndoableState(initial, opts)`   | Smallest call site; the hook owns redo and undo closures                    |
+| Mutating something the hook can't own (lists, graphs, canvas) | `useAmnesia().push({ redo, undo })` | Full control over the inverse; pass `{ applied: true }` after mutate        |
+| Reading the stack for UI (history list, breadcrumb, badges)   | `useAmnesia()` snapshot             | Already memo-stable; no need to subscribe manually                          |
+| Menu/toolbar labels + enablement only                         | `useAmnesiaLabels(scopeId?)`        | Selector snapshot avoids re-renders when derived label fields stay the same |
+| Direct programmatic undo / redo (toolbar buttons, menu items) | `useAmnesia().undo()` / `.redo()`   | Resolves to the affected entry id, or `null` when the stack was empty       |
 
 ## DevTools Registry vs Lifecycle Hooks vs Subscribers
 
