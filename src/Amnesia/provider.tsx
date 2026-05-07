@@ -169,7 +169,9 @@ export function AmnesiaProvider(props: AmnesiaProviderProps): JSX.Element {
 export function useAmnesiaProviderApi(): AmnesiaProviderApi {
     const ctx = useContext(AmnesiaContext);
     if (!ctx) {
-        throw new Error("useAmnesia must be used within an AmnesiaProvider");
+        throw new Error(
+            "useAmnesia/useAmnesiaLabels/useUndoableState/useAmnesiaFocusClaim/useAmnesiaScopes must be used within an AmnesiaProvider",
+        );
     }
     return ctx;
 }
