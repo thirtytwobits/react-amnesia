@@ -1,5 +1,5 @@
 ---
-sidebar_position: 11
+sidebar_position: 12
 title: OS Menu Integration (Tauri/Electron)
 description: Wire native Edit-menu Undo/Redo to react-amnesia using DevTools registry + native editable helpers.
 ---
@@ -41,6 +41,7 @@ You also need menu enabled-state updates when:
 ## React setup
 
 ```tsx
+import * as React from "react";
 import { AmnesiaProvider, AmnesiaShortcuts, useAmnesiaLabels } from "react-amnesia";
 
 function MenuStateBridge() {
