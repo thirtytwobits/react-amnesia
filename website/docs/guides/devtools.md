@@ -90,4 +90,5 @@ registry surface returns redacted state.
 
 - [AI invariants — DevTools Registry](../ai/invariants#devtools-registry)
 - [Recipe: Wiring DevTools For Agent / Extension Introspection](../ai/recipes#17-wiring-devtools-for-agent--extension-introspection)
+- [OS Menu Integration (Tauri/Electron)](./os-menu-integration)
 - [Anti-pattern: Leaving DevTools Enabled In Production](../ai/anti-patterns#leaving-devtools-enabled-in-production)
